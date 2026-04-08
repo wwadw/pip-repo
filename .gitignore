@@ -1,0 +1,69 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+#*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+#*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Project-related
+.idea/
+.vscode/
+*.code-workspace
+src/.clion.source.upload.marker
+
+# build
+src/geometry2
+src/jsk_recognition_msgs
+src/ROSDriver
+.tags
+*.tar
+cmake-build-*
+build/
+devel/
+install/
+.catkin_workspace
+
+# log
+log/*
+logs/*
+!log/.gitkeep
+
+# python
+__pycache__/
+*.egg-info/
+.cache
+
+# other
+CATKIN_IGNORE
+.CATKIN_IGNORE
+.DS_Store
+src/usfs_inference/external/
+docker/*.tar
+docker/*.tar.gz
+CLUADE.md
