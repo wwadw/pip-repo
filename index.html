@@ -1,1 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pip.wgists.me</title>
+  <meta
+    name="description"
+    content="Static wheel repository hosted on GitHub Pages."
+  >
+  <style>
+    :root {
+      --bg: #f5efe3;
+      --bg-strong: #efe4d1;
+      --panel: rgba(255, 251, 245, 0.88);
+      --panel-strong: #fffaf2;
+      --text: #201a13;
+      --muted: #6d6256;
+      --line: rgba(56, 41, 20, 0.14);
+      --teal: #0f766e;
+      --orange: #c86428;
+      --shadow: 0 24px 70px rgba(51, 33, 14, 0.14);
+      --radius: 26px;
+      --mono: "SFMono-Regular", "Cascadia Code", "JetBrains Mono", "Fira Code", monospace;
+      --sans: "Avenir Next", "Segoe UI Variable", "PingFang SC", "Noto Sans", sans-serif;
+    }
 
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-height: 100%;
+      background:
+        radial-gradient(circle at top left, rgba(200, 100, 40, 0.18), transparent 34%),
+        radial-gradient(circle at right 12% top 18%, rgba(15, 118, 110, 0.16), transparent 28%),
+        linear-gradient(180deg, var(--bg), var(--bg-strong));
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.6;
+      background-image:
+        linear-gradient(rgba(56, 41, 20, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(56, 41, 20, 0.04) 1px, transparent 1px);
+      background-size: 28px 28px;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    .page {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 40px 0 56px;
+    }
+
+    .hero,
+    .section {
+      border: 1px solid var(--line);
+      border-radius: calc(var(--radius) + 4px);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 32px;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -8% -28% auto;
+      width: 320px;
+      aspect-ratio: 1;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(200, 100, 40, 0.18), transparent 68%);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 14px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(15, 118, 110, 0.08);
+      color: var(--teal);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.02;
+      letter-spacing: -0.03em;
+    }
+
+    h1 {
+      max-width: 10ch;
+      font-size: clamp(40px, 8vw, 72px);
+    }
+
+    .lead {
+      max-width: 700px;
+      margin: 16px 0 0;
+      color: var(--muted);
+      font-size: clamp(16px, 2.2vw, 20px);
+    }
+
+    .hero-actions,
+    .meta-row,
+    .card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .hero-actions {
+      margin-top: 24px;
+    }
+
+    .button,
+    .link-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 11px 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      text-decoration: none;
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+    }
+
+    .button:hover,
+    .link-button:hover,
+    .button:focus-visible,
+    .link-button:focus-visible {
+      transform: translateY(-1px);
+    }
+
+    .button.primary {
+      background: #1b2423;
+      border-color: #1b2423;
+      color: #f8fbfa;
+    }
+
+    .button.secondary,
+    .link-button {
+      background: rgba(255, 255, 255, 0.58);
+    }
+
+    .meta-row {
+      margin-top: 24px;
+    }
+
+    .chip {
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.52);
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .section {
+      margin-top: 22px;
+      padding: 24px;
+    }
+
+    .section-head {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 12px 20px;
+      align-items: end;
+      margin-bottom: 18px;
+    }
+
+    .section-copy {
+      max-width: 640px;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .card {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: var(--panel-strong);
+    }
+
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: 14px;
+    }
+
+    .card h3 {
+      font-size: 28px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: rgba(15, 118, 110, 0.08);
+      color: var(--teal);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .version {
+      color: var(--muted);
+      font-size: 15px;
+      white-space: nowrap;
+    }
+
+    .card-copy {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .path {
+      display: block;
+      padding: 12px 14px;
+      overflow-x: auto;
+      border: 1px solid rgba(15, 118, 110, 0.16);
+      border-radius: 16px;
+      background: #172120;
+      color: #eafaf7;
+      font-size: 14px;
+      font-family: var(--mono);
+    }
+
+    .maintain-grid {
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 18px;
+    }
+
+    .steps,
+    .sample {
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: var(--panel-strong);
+    }
+
+    ol {
+      margin: 0;
+      padding-left: 20px;
+      color: var(--muted);
+    }
+
+    li + li {
+      margin-top: 10px;
+    }
+
+    pre {
+      margin: 0;
+      padding: 16px;
+      overflow-x: auto;
+      border: 1px solid rgba(15, 118, 110, 0.16);
+      border-radius: 16px;
+      background: #172120;
+      color: #eafaf7;
+      font-size: 14px;
+      line-height: 1.55;
+      font-family: var(--mono);
+    }
+
+    .footnote {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @media (max-width: 860px) {
+      .page {
+        width: min(100% - 20px, 760px);
+        padding-top: 20px;
+        padding-bottom: 28px;
+      }
+
+      .hero,
+      .section {
+        padding: 20px;
+      }
+
+      .grid,
+      .maintain-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .card-top {
+        flex-direction: column;
+        align-items: start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <p class="eyebrow">Static Wheel Repository</p>
+      <h1>pip.wgists.me</h1>
+      <p class="lead">
+        A clean front page for your GitHub-hosted wheel files. Open a package folder,
+        download a wheel directly, or extend this page by copying one package card.
+      </p>
+      <div class="hero-actions">
+        <a class="button primary" href="./dist/">Open dist/</a>
+        <a class="button secondary" href="./dist/index.html">Simple index</a>
+      </div>
+      <div class="meta-row">
+        <span class="chip">2 packages</span>
+        <span class="chip">GitHub Pages</span>
+        <span class="chip">Alias folders enabled</span>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2>Packages</h2>
+          <p class="section-copy">
+            One card per package. To add a new wheel later, copy one card, then update
+            the name, version, folder link, and direct wheel link.
+          </p>
+        </div>
+      </div>
+
+      <div class="grid">
+        <!-- Copy one .card block to add a new package. -->
+        <article class="card">
+          <div class="card-top">
+            <div>
+              <span class="badge">Package</span>
+              <h3>dataset</h3>
+            </div>
+            <span class="version">v0.1.0</span>
+          </div>
+          <p class="card-copy">
+            Folder alias plus direct wheel download.
+          </p>
+          <code class="path">dist/dataset/dataset-0.1.0-py3-none-any.whl</code>
+          <div class="card-actions">
+            <a class="link-button" href="./dist/dataset/">Open package</a>
+            <a class="link-button" href="./dist/dataset/dataset-0.1.0-py3-none-any.whl">Download wheel</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <div>
+              <span class="badge">Package</span>
+              <h3>fov_filter</h3>
+            </div>
+            <span class="version">v0.1.0</span>
+          </div>
+          <p class="card-copy">
+            Folder alias plus direct wheel download.
+          </p>
+          <code class="path">dist/fov_filter/fov_filter-0.1.0-py3-none-any.whl</code>
+          <div class="card-actions">
+            <a class="link-button" href="./dist/fov_filter/">Open package</a>
+            <a class="link-button" href="./dist/fov_filter/fov_filter-0.1.0-py3-none-any.whl">Download wheel</a>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2>How To Add A New Wheel</h2>
+          <p class="section-copy">
+            Keep the same folder pattern and this landing page stays easy to maintain.
+          </p>
+        </div>
+      </div>
+
+      <div class="maintain-grid">
+        <div class="steps">
+          <ol>
+            <li>Create a folder: <code>dist/new_pkg/</code></li>
+            <li>Put the wheel file inside that folder.</li>
+            <li>Add <code>dist/new_pkg/index.html</code> that points to the wheel file.</li>
+            <li>Copy one package card above and change the 4 visible fields.</li>
+          </ol>
+          <p class="footnote">
+            The root page stays readable because every package uses the same folder layout.
+          </p>
+        </div>
+
+        <div class="sample">
+          <pre><code>dist/
+  new_pkg/
+    index.html
+    new_pkg-0.1.0-py3-none-any.whl</code></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
