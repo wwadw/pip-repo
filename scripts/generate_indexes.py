@@ -432,9 +432,7 @@ def render_root_index(packages: Iterable[Package], documents: Iterable[Document]
       <p class="eyebrow">静态 Wheel 仓库</p>
       <h1>pip.wgists.me</h1>
       <p class="lead">
-        首页由脚本自动扫描 <code>dist/</code> 和 <code>docs/</code> 目录生成。
-        每个包卡片会自动匹配同名文档，例如 <code>dist/dataset/</code> 对应
-        <code>docs/dataset.md</code>。
+        用于托管和分发 Python wheel 文件，并提供对应的使用文档入口。
       </p>
       <div class="hero-actions">
         <a class="button primary" href="./dist/">打开 dist/</a>
@@ -453,8 +451,7 @@ def render_root_index(packages: Iterable[Package], documents: Iterable[Document]
         <div>
           <h2>包列表</h2>
           <p class="section-copy">
-            下面的卡片不是手写维护，而是由脚本根据 <code>dist/&lt;包名&gt;/</code> 自动生成。
-            如果存在同名文档 <code>docs/&lt;包名&gt;.md</code>，卡片上会自动出现文档按钮。
+            点击可进入包目录、直接下载 wheel，或打开对应的使用文档。
           </p>
         </div>
       </div>
@@ -518,7 +515,7 @@ def render_card(package: Package, document: Document | None) -> str:
     if document is not None:
         doc_link = (
             f'\n            <a class="link-button small" href="./docs/{escape(document.stem)}.html">'
-            "查看文档</a>"
+            "使用文档</a>"
         )
     return f"""        <article class="card">
           <div class="card-top">
