@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>pip.wgists.me</title>
+  <title>pip.wgists.me 轮子仓库</title>
   <meta
     name="description"
-    content="Static wheel repository hosted on GitHub Pages."
+    content="基于 GitHub Pages 托管的静态 wheel 仓库。"
   >
   <style>
     :root {
@@ -328,69 +328,69 @@
 <body>
   <main class="page">
     <section class="hero">
-      <p class="eyebrow">Static Wheel Repository</p>
+      <p class="eyebrow">静态 Wheel 仓库</p>
       <h1>pip.wgists.me</h1>
       <p class="lead">
-        A clean front page for your GitHub-hosted wheel files. Open a package folder,
-        download a wheel directly, or extend this page by copying one package card.
+        这是一个基于 GitHub 托管的 wheel 下载首页。你可以进入包目录、直接下载
+        wheel，也可以通过复制卡片的方式快速添加新的包。
       </p>
       <div class="hero-actions">
-        <a class="button primary" href="./dist/">Open dist/</a>
-        <a class="button secondary" href="./dist/index.html">Simple index</a>
+        <a class="button primary" href="./dist/">打开 dist/</a>
+        <a class="button secondary" href="./dist/index.html">简洁索引页</a>
       </div>
       <div class="meta-row">
-        <span class="chip">2 packages</span>
+        <span class="chip">2 个包</span>
         <span class="chip">GitHub Pages</span>
-        <span class="chip">Alias folders enabled</span>
+        <span class="chip">支持别名目录</span>
       </div>
     </section>
 
     <section class="section">
       <div class="section-head">
         <div>
-          <h2>Packages</h2>
+          <h2>包列表</h2>
           <p class="section-copy">
-            One card per package. To add a new wheel later, copy one card, then update
-            the name, version, folder link, and direct wheel link.
+            每个包对应一张卡片。后续新增 wheel 时，只需要复制一张卡片，再修改
+            包名、版本、目录链接和直链下载地址即可。
           </p>
         </div>
       </div>
 
       <div class="grid">
-        <!-- Copy one .card block to add a new package. -->
+        <!-- 新增包时复制一个 .card 区块即可。 -->
         <article class="card">
           <div class="card-top">
             <div>
-              <span class="badge">Package</span>
+              <span class="badge">包</span>
               <h3>dataset</h3>
             </div>
             <span class="version">v0.1.0</span>
           </div>
           <p class="card-copy">
-            Folder alias plus direct wheel download.
+            提供包目录入口和 wheel 直链下载。
           </p>
           <code class="path">dist/dataset/dataset-0.1.0-py3-none-any.whl</code>
           <div class="card-actions">
-            <a class="link-button" href="./dist/dataset/">Open package</a>
-            <a class="link-button" href="./dist/dataset/dataset-0.1.0-py3-none-any.whl">Download wheel</a>
+            <a class="link-button" href="./dist/dataset/">打开包目录</a>
+            <a class="link-button" href="./dist/dataset/dataset-0.1.0-py3-none-any.whl">下载 wheel</a>
           </div>
         </article>
 
         <article class="card">
           <div class="card-top">
             <div>
-              <span class="badge">Package</span>
+              <span class="badge">包</span>
               <h3>fov_filter</h3>
             </div>
             <span class="version">v0.1.0</span>
           </div>
           <p class="card-copy">
-            Folder alias plus direct wheel download.
+            提供包目录入口和 wheel 直链下载。
           </p>
           <code class="path">dist/fov_filter/fov_filter-0.1.0-py3-none-any.whl</code>
           <div class="card-actions">
-            <a class="link-button" href="./dist/fov_filter/">Open package</a>
-            <a class="link-button" href="./dist/fov_filter/fov_filter-0.1.0-py3-none-any.whl">Download wheel</a>
+            <a class="link-button" href="./dist/fov_filter/">打开包目录</a>
+            <a class="link-button" href="./dist/fov_filter/fov_filter-0.1.0-py3-none-any.whl">下载 wheel</a>
           </div>
         </article>
       </div>
@@ -399,9 +399,9 @@
     <section class="section">
       <div class="section-head">
         <div>
-          <h2>How To Add A New Wheel</h2>
+          <h2>如何新增 Wheel</h2>
           <p class="section-copy">
-            Keep the same folder pattern and this landing page stays easy to maintain.
+            只要保持同样的目录结构，这个首页后续就会一直很好维护。
           </p>
         </div>
       </div>
@@ -409,13 +409,13 @@
       <div class="maintain-grid">
         <div class="steps">
           <ol>
-            <li>Create a folder: <code>dist/new_pkg/</code></li>
-            <li>Put the wheel file inside that folder.</li>
-            <li>Add <code>dist/new_pkg/index.html</code> that points to the wheel file.</li>
-            <li>Copy one package card above and change the 4 visible fields.</li>
+            <li>先创建目录：<code>dist/new_pkg/</code></li>
+            <li>把 wheel 文件放进这个目录里。</li>
+            <li>添加 <code>dist/new_pkg/index.html</code>，让它指向对应的 wheel 文件。</li>
+            <li>复制上面任意一张卡片，改掉 4 个可见字段即可。</li>
           </ol>
           <p class="footnote">
-            The root page stays readable because every package uses the same folder layout.
+            因为每个包都遵循同一套目录规则，所以根首页会一直保持清晰。
           </p>
         </div>
 
