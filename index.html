@@ -144,6 +144,12 @@
       white-space: nowrap;
     }
 
+    .link-button.small {
+      min-height: 36px;
+      padding: 8px 12px;
+      font-size: 14px;
+    }
+
     .button:hover,
     .link-button:hover,
     .button:focus-visible,
@@ -340,16 +346,16 @@
       <h1>pip.wgists.me</h1>
       <p class="lead">
         首页由脚本自动扫描 <code>dist/</code> 和 <code>docs/</code> 目录生成。
-        轮子包和使用文档都不需要手工维护卡片。
+        每个包卡片会自动匹配同名文档，例如 <code>dist/dataset/</code> 对应
+        <code>docs/dataset.md</code>。
       </p>
       <div class="hero-actions">
         <a class="button primary" href="./dist/">打开 dist/</a>
         <a class="button secondary" href="./dist/index.html">简洁索引页</a>
-        <a class="button secondary" href="./docs/">使用文档</a>
       </div>
       <div class="meta-row">
         <span class="chip">3 个包</span>
-        <span class="chip">3 篇文档</span>
+        <span class="chip">3 个包带文档</span>
         <span class="chip">GitHub Pages</span>
         <span class="chip">自动扫描生成</span>
       </div>
@@ -361,7 +367,7 @@
           <h2>包列表</h2>
           <p class="section-copy">
             下面的卡片不是手写维护，而是由脚本根据 <code>dist/&lt;包名&gt;/</code> 自动生成。
-            你新增目录和 wheel 后，只需要重新运行一次生成脚本。
+            如果存在同名文档 <code>docs/&lt;包名&gt;.md</code>，卡片上会自动出现文档按钮。
           </p>
         </div>
       </div>
@@ -380,6 +386,7 @@
           <div class="card-actions">
             <a class="link-button" href="./dist/dataset/">打开包目录</a>
             <a class="link-button" href="./dist/dataset/dataset-0.1.0-py3-none-any.whl">下载最新 wheel</a>
+            <a class="link-button small" href="./docs/dataset.html">查看文档</a>
           </div>
         </article>
         <article class="card">
@@ -395,6 +402,7 @@
           <div class="card-actions">
             <a class="link-button" href="./dist/fov_filter/">打开包目录</a>
             <a class="link-button" href="./dist/fov_filter/fov_filter-0.1.0-py3-none-any.whl">下载最新 wheel</a>
+            <a class="link-button small" href="./docs/fov_filter.html">查看文档</a>
           </div>
         </article>
         <article class="card">
@@ -410,63 +418,7 @@
           <div class="card-actions">
             <a class="link-button" href="./dist/split_bag/">打开包目录</a>
             <a class="link-button" href="./dist/split_bag/split_bag-0.1.0-py3-none-any.whl">下载最新 wheel</a>
-          </div>
-        </article>
-      </div>
-    </section>
-
-    <section class="section">
-      <div class="section-head">
-        <div>
-          <h2>使用文档</h2>
-          <p class="section-copy">
-            下面的文档入口由 <code>docs/*.md</code> 自动生成。
-            新增 Markdown 文档后，重新运行脚本即可在首页出现。
-          </p>
-        </div>
-      </div>
-
-      <div class="grid">
-        <article class="card">
-          <div class="card-top">
-            <div class="card-head">
-              <span class="badge">dateset</span>
-              <h3>dataset</h3>
-            </div>
-            <span class="version">文档</span>
-          </div>
-          <p class="card-copy">ROS 图像数据采集工具的 Python 包。安装后可用 `dataset` 命令直接启动采集。</p>
-          <code class="path">docs/dateset.md</code>
-          <div class="card-actions">
-            <a class="link-button" href="./docs/dateset.html">打开文档</a>
-          </div>
-        </article>
-        <article class="card">
-          <div class="card-top">
-            <div class="card-head">
-              <span class="badge">fov_filter</span>
-              <h3>fov-filter</h3>
-            </div>
-            <span class="version">文档</span>
-          </div>
-          <p class="card-copy">基于 ROS1 的 PointCloud2 FOV 过滤器。它直接读取 bag 包中的点云话题，按多个水平/垂直 FOV 区域以及距离范围做实时过滤，并把结果发布到 ROS 话题。</p>
-          <code class="path">docs/fov_filter.md</code>
-          <div class="card-actions">
-            <a class="link-button" href="./docs/fov_filter.html">打开文档</a>
-          </div>
-        </article>
-        <article class="card">
-          <div class="card-top">
-            <div class="card-head">
-              <span class="badge">split_bag</span>
-              <h3>split_bag</h3>
-            </div>
-            <span class="version">文档</span>
-          </div>
-          <p class="card-copy">将 ROS bag （包含图片和点云）拆分为单帧图片与点云输出。</p>
-          <code class="path">docs/split_bag.md</code>
-          <div class="card-actions">
-            <a class="link-button" href="./docs/split_bag.html">打开文档</a>
+            <a class="link-button small" href="./docs/split_bag.html">查看文档</a>
           </div>
         </article>
       </div>
@@ -487,7 +439,7 @@
           <ol>
             <li>创建目录：<code>dist/new_pkg/</code></li>
             <li>把 wheel 文件放进这个目录里。</li>
-            <li>文档放到：<code>docs/xxx.md</code></li>
+            <li>如果要显示文档按钮，文档文件命名为：<code>docs/new_pkg.md</code></li>
             <li>运行：<code>python scripts/generate_indexes.py</code></li>
             <li>提交生成后的 <code>index.html</code>、<code>docs/*.html</code> 和 <code>dist/*/index.html</code></li>
           </ol>

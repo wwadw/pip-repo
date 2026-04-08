@@ -81,10 +81,10 @@ def write_text(path: Path, content: str) -> None:
 def render_root_index(packages: Iterable[Package], documents: Iterable[Document]) -> str:
     package_list = list(packages)
     document_list = list(documents)
-    cards = "\n".join(render_card(package) for package in package_list)
-    doc_cards = "\n".join(render_doc_card(document) for document in document_list)
+    docs_by_stem = {document.stem: document for document in document_list}
+    cards = "\n".join(render_card(package, docs_by_stem.get(package.name)) for package in package_list)
     count = len(package_list)
-    doc_count = len(document_list)
+    matched_doc_count = sum(1 for package in package_list if package.name in docs_by_stem)
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -229,6 +229,12 @@ def render_root_index(packages: Iterable[Package], documents: Iterable[Document]
       text-decoration: none;
       transition: transform 120ms ease;
       white-space: nowrap;
+    }}
+
+    .link-button.small {{
+      min-height: 36px;
+      padding: 8px 12px;
+      font-size: 14px;
     }}
 
     .button:hover,
@@ -427,16 +433,16 @@ def render_root_index(packages: Iterable[Package], documents: Iterable[Document]
       <h1>pip.wgists.me</h1>
       <p class="lead">
         首页由脚本自动扫描 <code>dist/</code> 和 <code>docs/</code> 目录生成。
-        轮子包和使用文档都不需要手工维护卡片。
+        每个包卡片会自动匹配同名文档，例如 <code>dist/dataset/</code> 对应
+        <code>docs/dataset.md</code>。
       </p>
       <div class="hero-actions">
         <a class="button primary" href="./dist/">打开 dist/</a>
         <a class="button secondary" href="./dist/index.html">简洁索引页</a>
-        <a class="button secondary" href="./docs/">使用文档</a>
       </div>
       <div class="meta-row">
         <span class="chip">{count} 个包</span>
-        <span class="chip">{doc_count} 篇文档</span>
+        <span class="chip">{matched_doc_count} 个包带文档</span>
         <span class="chip">GitHub Pages</span>
         <span class="chip">自动扫描生成</span>
       </div>
@@ -448,29 +454,13 @@ def render_root_index(packages: Iterable[Package], documents: Iterable[Document]
           <h2>包列表</h2>
           <p class="section-copy">
             下面的卡片不是手写维护，而是由脚本根据 <code>dist/&lt;包名&gt;/</code> 自动生成。
-            你新增目录和 wheel 后，只需要重新运行一次生成脚本。
+            如果存在同名文档 <code>docs/&lt;包名&gt;.md</code>，卡片上会自动出现文档按钮。
           </p>
         </div>
       </div>
 
       <div class="grid">
 {cards}
-      </div>
-    </section>
-
-    <section class="section">
-      <div class="section-head">
-        <div>
-          <h2>使用文档</h2>
-          <p class="section-copy">
-            下面的文档入口由 <code>docs/*.md</code> 自动生成。
-            新增 Markdown 文档后，重新运行脚本即可在首页出现。
-          </p>
-        </div>
-      </div>
-
-      <div class="grid">
-{doc_cards}
       </div>
     </section>
 
@@ -489,7 +479,7 @@ def render_root_index(packages: Iterable[Package], documents: Iterable[Document]
           <ol>
             <li>创建目录：<code>dist/new_pkg/</code></li>
             <li>把 wheel 文件放进这个目录里。</li>
-            <li>文档放到：<code>docs/xxx.md</code></li>
+            <li>如果要显示文档按钮，文档文件命名为：<code>docs/new_pkg.md</code></li>
             <li>运行：<code>python scripts/generate_indexes.py</code></li>
             <li>提交生成后的 <code>index.html</code>、<code>docs/*.html</code> 和 <code>dist/*/index.html</code></li>
           </ol>
@@ -515,7 +505,7 @@ python scripts/generate_indexes.py</code></pre>
 </html>"""
 
 
-def render_card(package: Package) -> str:
+def render_card(package: Package, document: Document | None) -> str:
     name = escape(package.name)
     wheel_path = f"dist/{package.name}/{package.latest.name}"
     description = (
@@ -524,6 +514,12 @@ def render_card(package: Package) -> str:
         else "目录中当前有 1 个 wheel 文件。"
     )
     version = f"v{escape(package.version)}" if package.version else "wheel"
+    doc_link = ""
+    if document is not None:
+        doc_link = (
+            f'\n            <a class="link-button small" href="./docs/{escape(document.stem)}.html">'
+            "查看文档</a>"
+        )
     return f"""        <article class="card">
           <div class="card-top">
             <div class="card-head">
@@ -536,28 +532,7 @@ def render_card(package: Package) -> str:
           <code class="path">{escape(wheel_path)}</code>
           <div class="card-actions">
             <a class="link-button" href="./dist/{name}/">打开包目录</a>
-            <a class="link-button" href="./{escape(wheel_path)}">下载最新 wheel</a>
-          </div>
-        </article>"""
-
-
-def render_doc_card(document: Document) -> str:
-    title = escape(document.title)
-    summary = escape(document.summary)
-    href = f"./docs/{escape(document.stem)}.html"
-    stem = escape(document.stem)
-    return f"""        <article class="card">
-          <div class="card-top">
-            <div class="card-head">
-              <span class="badge">{stem}</span>
-              <h3>{title}</h3>
-            </div>
-            <span class="version">文档</span>
-          </div>
-          <p class="card-copy">{summary}</p>
-          <code class="path">docs/{stem}.md</code>
-          <div class="card-actions">
-            <a class="link-button" href="{href}">打开文档</a>
+            <a class="link-button" href="./{escape(wheel_path)}">下载最新 wheel</a>{doc_link}
           </div>
         </article>"""
 
