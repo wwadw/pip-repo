@@ -90,7 +90,7 @@ def render_root_index(packages: Iterable[Package], documents: Iterable[Document]
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>pip.wgists.me 轮子仓库</title>
+  <title>pip.wgists.me python packages</title>
   <meta
     name="description"
     content="基于 GitHub Pages 托管的静态 wheel 仓库。"
