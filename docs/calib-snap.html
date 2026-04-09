@@ -186,7 +186,7 @@
       </ul>
       <h2>安装</h2>
       <p>建议在已 <code>source</code> ROS 环境后安装 wheel：</p>
-      <pre><code class="language-bash">uv pip install /home/ww/pip-repo/dist/calib-snap/calib_snap-0.1.0-py3-none-any.whl</code></pre>
+      <pre><code class="language-bash">pip install https://pip.wgists.me/dist/calib-snap/calib_snap-0.1.0-py3-none-any.whl</code></pre>
       <p>如果要直接在仓库里用 <code>uv</code> 跑别名命令，建议先建一个可复用系统 ROS 包的环境：</p>
       <pre><code class="language-bash">cd /home/ww/pip-repo/code
 uv venv --python &quot;$(which python3)&quot; --system-site-packages
