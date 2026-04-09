@@ -20,7 +20,7 @@
 建议在已 `source` ROS 环境后安装 wheel：
 
 ```bash
-uv pip install /home/ww/pip-repo/dist/calib-snap/calib_snap-0.1.0-py3-none-any.whl
+pip install https://pip.wgists.me/dist/calib-snap/calib_snap-0.1.0-py3-none-any.whl
 ```
 
 如果要直接在仓库里用 `uv` 跑别名命令，建议先建一个可复用系统 ROS 包的环境：
