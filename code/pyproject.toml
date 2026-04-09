@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "calib-snap"
+version = "0.1.0"
+description = "Capture paired RTSP/camera images and lidar point clouds for calibration"
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.8"
+dependencies = [
+  "numpy",
+  "opencv-python",
+]
+
+[project.scripts]
+calib-snap = "calib_snap:main"
+
+[tool.setuptools]
+py-modules = ["calib_snap"]
+
+[tool.uv]
+package = true
