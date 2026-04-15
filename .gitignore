@@ -68,4 +68,5 @@ docker/*.tar
 docker/*.tar.gz
 CLUADE.md
 superpowers/
+.worktrees/
 .codex
