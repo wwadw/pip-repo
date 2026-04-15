@@ -67,3 +67,5 @@ src/usfs_inference/external/
 docker/*.tar
 docker/*.tar.gz
 CLUADE.md
+superpowers/
+.codex
