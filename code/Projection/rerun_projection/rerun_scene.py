@@ -7,8 +7,6 @@ import numpy as np
 
 SEMANTIC_CAMERA_PATH = "world/ego_vehicle/semantic_camera"
 OVERLAY_CAMERA_PATH = "world/ego_vehicle/overlay_camera"
-SEMANTIC_CAMERA_RIG_PATH = "world/ego_vehicle/semantic_camera_rig"
-OVERLAY_CAMERA_RIG_PATH = "world/ego_vehicle/overlay_camera_rig"
 
 
 def build_locked_pair_payloads(locked_pairs: Iterable[object]) -> Dict[str, List[object]]:
@@ -43,26 +41,25 @@ class RerunSceneLogger:
                 ),
                 recording=self.recording,
             )
-            self._log_camera_rig(rr, SEMANTIC_CAMERA_RIG_PATH, config, [96, 208, 255])
-            self._log_camera_rig(rr, OVERLAY_CAMERA_RIG_PATH, config, [255, 178, 92])
+        self._log_camera_view(rr, SEMANTIC_CAMERA_PATH, frame.semantic_image, config, [96, 208, 255], lossless=True)
+        self._log_camera_view(rr, OVERLAY_CAMERA_PATH, frame.overlay_image, config, [255, 178, 92], lossless=False)
 
         valid_pixels = frame.projection.pixel_coordinates[frame.projection.in_image_mask]
         valid_indices = frame.projection.valid_point_indices.tolist()
         valid_colors = [point_colors[index] for index in valid_indices] if valid_indices else []
 
         if self.view_kind in ("2d", "both"):
-            self._log_camera_view(rr, SEMANTIC_CAMERA_PATH, frame.semantic_image, config, [96, 208, 255], lossless=True)
-            self._log_camera_view(rr, OVERLAY_CAMERA_PATH, frame.overlay_image, config, [255, 178, 92], lossless=False)
-            rr.log(
-                f"{OVERLAY_CAMERA_PATH}/projected_points",
-                rr.Points2D(
-                    valid_pixels.tolist() if len(valid_pixels) else [],
-                    colors=valid_colors if valid_colors else None,
-                    radii=[1.6] * len(valid_pixels),
-                    keypoint_ids=valid_indices if valid_indices else [],
-                ),
-                recording=self.recording,
-            )
+            for camera_path in (SEMANTIC_CAMERA_PATH, OVERLAY_CAMERA_PATH):
+                rr.log(
+                    f"{camera_path}/projected_points",
+                    rr.Points2D(
+                        valid_pixels.tolist() if len(valid_pixels) else [],
+                        colors=valid_colors if valid_colors else None,
+                        radii=[1.6] * len(valid_pixels),
+                        keypoint_ids=valid_indices if valid_indices else [],
+                    ),
+                    recording=self.recording,
+                )
 
         if frame_index is not None:
             self.clear_interactions(frame_index)
@@ -73,8 +70,10 @@ class RerunSceneLogger:
         self._set_frame_time(rr, frame_index)
         for path in (
             "selection/lidar",
+            "selection/semantic_camera",
             "selection/overlay_camera",
             "pairs/lidar",
+            "pairs/semantic_camera",
             "pairs/overlay_camera",
         ):
             rr.log(path, rr.Clear(recursive=True), recording=self.recording)
@@ -92,18 +91,20 @@ class RerunSceneLogger:
                 recording=self.recording,
             )
         if self.view_kind in ("2d", "both"):
-            rr.log(
-                "selection/overlay_camera/current_match",
-                rr.Points2D([selection.matched_pixel.tolist()], colors=[[255, 255, 255]], radii=[4.0]),
-                recording=self.recording,
-            )
+            for camera_name in ("semantic_camera", "overlay_camera"):
+                rr.log(
+                    f"selection/{camera_name}/current_match",
+                    rr.Points2D([selection.matched_pixel.tolist()], colors=[[255, 255, 255]], radii=[4.0]),
+                    recording=self.recording,
+                )
 
         if self.view_kind in ("2d", "both") and selection.clicked_pixel is not None:
-            rr.log(
-                "selection/overlay_camera/current_click",
-                rr.Points2D([selection.clicked_pixel.tolist()], colors=[[255, 122, 107]], radii=[3.0]),
-                recording=self.recording,
-            )
+            for camera_name in ("semantic_camera", "overlay_camera"):
+                rr.log(
+                    f"selection/{camera_name}/current_click",
+                    rr.Points2D([selection.clicked_pixel.tolist()], colors=[[255, 122, 107]], radii=[3.0]),
+                    recording=self.recording,
+                )
 
     def log_locked_pairs(self, locked_pairs: Iterable[object], frame_index: int | None = None) -> None:
         import rerun as rr
@@ -115,17 +116,18 @@ class RerunSceneLogger:
         resolved_frame = frame_index if frame_index is not None else pairs[0].frame_index
         self._set_frame_time(rr, resolved_frame)
         if self.view_kind in ("2d", "both"):
-            rr.log(
-                "pairs/overlay_camera/locked",
-                rr.Points2D(
-                    payload["positions2d"],
-                    colors=payload["colors"],
-                    labels=payload["labels"],
-                    radii=[3.2] * len(payload["positions2d"]),
-                    keypoint_ids=payload["keypoint_ids"],
-                ),
-                recording=self.recording,
-            )
+            for camera_name in ("semantic_camera", "overlay_camera"):
+                rr.log(
+                    f"pairs/{camera_name}/locked",
+                    rr.Points2D(
+                        payload["positions2d"],
+                        colors=payload["colors"],
+                        labels=payload["labels"],
+                        radii=[3.2] * len(payload["positions2d"]),
+                        keypoint_ids=payload["keypoint_ids"],
+                    ),
+                    recording=self.recording,
+                )
         if self.view_kind in ("3d", "both"):
             rr.log(
                 "pairs/lidar/locked",
@@ -149,39 +151,19 @@ class RerunSceneLogger:
             ),
             recording=self.recording,
         )
+        rr.log(path, rr.TransformAxes3D(0.28), recording=self.recording)
         rr.log(
             path,
             rr.Pinhole.from_fields(
                 image_from_camera=config.camera_matrix,
                 resolution=[config.image_width, config.image_height],
-                image_plane_distance=0.35,
+                image_plane_distance=5.0,
                 line_width=1.2,
                 color=color,
             ),
             recording=self.recording,
         )
-        rr.log(f"{path}/image", _encoded_image(rr, image, lossless=lossless), recording=self.recording)
-
-    def _log_camera_rig(self, rr, path: str, config, color: list[int]) -> None:
-        rr.log(
-            path,
-            rr.Transform3D(
-                translation=config.lidar_to_camera[:3, 3],
-                mat3x3=config.lidar_to_camera[:3, :3],
-                relation=rr.TransformRelation.ChildFromParent,
-            ),
-            recording=self.recording,
-        )
-        rr.log(path, rr.TransformAxes3D(0.28), recording=self.recording)
-        rr.log(
-            f"{path}/frustum",
-            rr.LineStrips3D(
-                _camera_frustum_strips(config.camera_matrix, config.image_width, config.image_height),
-                colors=[color] * 5,
-                radii=[0.008] * 5,
-            ),
-            recording=self.recording,
-        )
+        rr.log(path, _encoded_image(rr, image, lossless=lossless), recording=self.recording)
 
     def _set_frame_time(self, rr, frame_index: int | None) -> None:
         if frame_index is None:
@@ -202,30 +184,6 @@ def _encoded_image(rr, image: np.ndarray, *, lossless: bool):
     if not ok:
         raise RuntimeError("Failed to encode overlay image to JPEG.")
     return rr.EncodedImage(contents=encoded.tobytes(), media_type="image/jpeg")
-
-
-def _camera_frustum_strips(camera_matrix: np.ndarray, image_width: int, image_height: int) -> list[list[list[float]]]:
-    depth = 0.35
-    fx = float(camera_matrix[0, 0])
-    fy = float(camera_matrix[1, 1])
-    cx = float(camera_matrix[0, 2])
-    cy = float(camera_matrix[1, 2])
-    corners_px = [
-        [0.0, 0.0],
-        [float(image_width), 0.0],
-        [float(image_width), float(image_height)],
-        [0.0, float(image_height)],
-    ]
-    corners = []
-    for u, v in corners_px:
-        x = (u - cx) * depth / fx
-        y = (v - cy) * depth / fy
-        corners.append([x, y, depth])
-    origin = [0.0, 0.0, 0.0]
-    strips = [[origin, corner] for corner in corners]
-    strips.append([corners[0], corners[1], corners[2], corners[3], corners[0]])
-    return strips
-
 
 def _pointcloud_colors(points_xyz: np.ndarray) -> list[list[int]]:
     if len(points_xyz) == 0:

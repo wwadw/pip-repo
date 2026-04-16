@@ -100,7 +100,7 @@ def test_2d_logger_skips_3d_pointcloud(monkeypatch):
 
     RerunSceneLogger(view_kind="2d").log_current_state(_frame(), _config())
 
-    assert "world/ego_vehicle/semantic_camera/image" in [path for path, _ in fake_rr.records]
+    assert "world/ego_vehicle/semantic_camera" in [path for path, _ in fake_rr.records]
     assert "world/ego_vehicle/lidar" not in [path for path, _ in fake_rr.records]
 
 
@@ -113,23 +113,29 @@ def test_nuscenes_style_logger_uses_vehicle_sensor_paths(monkeypatch):
     paths = [path for path, _ in fake_rr.records]
 
     assert "world/ego_vehicle/lidar" in paths
-    assert "world/ego_vehicle/semantic_camera/image" in paths
-    assert "world/ego_vehicle/overlay_camera/image" in paths
-    assert "world/ego_vehicle/semantic_camera_rig" in paths
-    assert "world/ego_vehicle/overlay_camera_rig" in paths
+    assert "world/ego_vehicle/semantic_camera" in paths
+    assert "world/ego_vehicle/overlay_camera" in paths
+    assert "world/ego_vehicle/semantic_camera_rig" not in paths
+    assert "world/ego_vehicle/overlay_camera_rig" not in paths
 
 
-def test_semantic_view_skips_projected_points_and_uses_overlay_view(monkeypatch):
+def test_camera_entities_hold_image_plane_and_projected_points(monkeypatch):
     fake_rr = FakeRerun()
     monkeypatch.setitem(__import__("sys").modules, "rerun", fake_rr)
 
     RerunSceneLogger(view_kind="both").log_current_state(_frame(), _config())
 
     paths = [path for path, _ in fake_rr.records]
-    assert "world/ego_vehicle/semantic_camera/projected_points" not in paths
+    assert "world/ego_vehicle/semantic_camera/projected_points" in paths
     assert "world/ego_vehicle/overlay_camera/projected_points" in paths
-    assert "world/ego_vehicle/semantic_camera_rig/image" not in paths
-    assert "world/ego_vehicle/overlay_camera_rig/image" not in paths
+
+    semantic_records = [value for path, value in fake_rr.records if path == "world/ego_vehicle/semantic_camera"]
+    overlay_records = [value for path, value in fake_rr.records if path == "world/ego_vehicle/overlay_camera"]
+
+    assert any(isinstance(value, fake_rr.Pinhole) for value in semantic_records)
+    assert any(isinstance(value, fake_rr.EncodedImage) for value in semantic_records)
+    assert any(isinstance(value, fake_rr.Pinhole) for value in overlay_records)
+    assert any(isinstance(value, fake_rr.EncodedImage) for value in overlay_records)
 
 
 def test_camera_transform_uses_child_from_parent_relation(monkeypatch):
@@ -150,7 +156,7 @@ def test_camera_transform_uses_child_from_parent_relation(monkeypatch):
     RerunSceneLogger(view_kind="both").log_current_state(_frame(), config)
 
     transform = next(
-        value for path, value in fake_rr.records if path == "world/ego_vehicle/semantic_camera_rig" and isinstance(value, fake_rr.Transform3D)
+        value for path, value in fake_rr.records if path == "world/ego_vehicle/semantic_camera" and isinstance(value, fake_rr.Transform3D)
     )
 
     assert transform.kwargs["relation"] == fake_rr.TransformRelation.ChildFromParent

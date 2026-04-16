@@ -7,8 +7,8 @@ const root = resolve(__dirname, "..");
 test("workbench uses one rerun viewer so the blueprint owns the 3d and camera layout", () => {
   const html = readFileSync(resolve(root, "index.html"), "utf8");
 
-  expect(html).toContain('<button id="imageClickLayer"');
   expect(html).toContain('id="rerunViewer"');
+  expect(html).not.toContain('id="imageClickLayer"');
   expect(html).not.toContain('id="viewer2d"');
 });
 

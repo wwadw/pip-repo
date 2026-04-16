@@ -126,3 +126,21 @@ def test_reload_source_defers_recording_build(monkeypatch):
     runtime.reload_source()
 
     assert started == ["background"]
+
+
+def test_projected_point_selection_from_camera_view_keeps_2d_source():
+    runtime = ProjectionRuntime.for_test()
+
+    runtime.select_3d(
+        {
+            "frame_index": 0,
+            "entity_path": "world/ego_vehicle/semantic_camera/projected_points",
+            "instance_id": 1,
+        }
+    )
+
+    payload = runtime.bootstrap_payload()["current_selection"]
+
+    assert payload["source_view"] == "2d"
+    assert payload["clicked_pixel"] == [30.0, 30.0]
+    assert payload["matched_pixel"] == [30.0, 30.0]

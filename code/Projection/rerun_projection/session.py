@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 import numpy as np
 
@@ -47,21 +47,7 @@ class ProjectionSession:
         distances = np.einsum("ij,ij->i", deltas, deltas)
         nearest_idx = int(np.argmin(distances))
         point_index = int(self.valid_point_indices[nearest_idx])
-        matched_pixel = self.projected_pixels[nearest_idx]
-        point_xyz = self.points_xyz[point_index]
-        depth = float(self.camera_points[point_index, 2])
-        selection = CurrentSelection(
-            frame_index=frame_index,
-            source_view="2d",
-            clicked_pixel=pixel,
-            matched_pixel=matched_pixel,
-            point_index=point_index,
-            point_xyz=point_xyz,
-            depth=depth,
-            pixel_error=float(np.linalg.norm(pixel - matched_pixel)),
-        )
-        self.current_selection = selection
-        return selection
+        return self._select_visible_point(frame_index=frame_index, point_index=point_index, source_view="2d", clicked_pixel=pixel)
 
     def select_3d(self, *, frame_index: int, instance_id: Optional[int], position: Optional[np.ndarray]) -> CurrentSelection:
         if instance_id is not None:
@@ -71,24 +57,31 @@ class ProjectionSession:
                 raise RuntimeError("3D selection requires an instance id or position.")
             deltas = self.points_xyz - position.reshape(1, 3)
             point_index = int(np.argmin(np.einsum("ij,ij->i", deltas, deltas)))
-        match_indices = np.where(self.valid_point_indices == point_index)[0]
-        if match_indices.size == 0:
-            raise RuntimeError(f"Point index {point_index} is not visible in the current projection.")
-        matched_pixel = self.projected_pixels[int(match_indices[0])]
-        point_xyz = self.points_xyz[point_index]
-        depth = float(self.camera_points[point_index, 2])
-        selection = CurrentSelection(
-            frame_index=frame_index,
-            source_view="3d",
-            clicked_pixel=None,
-            matched_pixel=matched_pixel,
-            point_index=point_index,
-            point_xyz=point_xyz,
-            depth=depth,
-            pixel_error=0.0,
-        )
-        self.current_selection = selection
-        return selection
+        return self._select_visible_point(frame_index=frame_index, point_index=point_index, source_view="3d", clicked_pixel=None)
+
+    def select_projected_point(
+        self,
+        *,
+        frame_index: int,
+        instance_id: Optional[int],
+        position: Optional[np.ndarray],
+    ) -> CurrentSelection:
+        if len(self.projected_pixels) == 0:
+            raise RuntimeError("No projected points are visible in the current frame.")
+        if instance_id is not None:
+            point_index = int(instance_id)
+            match_indices = np.where(self.valid_point_indices == point_index)[0]
+            if match_indices.size == 0:
+                raise RuntimeError(f"Point index {point_index} is not visible in the current projection.")
+            clicked_pixel = self.projected_pixels[int(match_indices[0])]
+        else:
+            if position is None:
+                raise RuntimeError("2D projected-point selection requires an instance id or pixel position.")
+            clicked_pixel = np.asarray(position[:2], dtype=np.float64)
+            deltas = self.projected_pixels - clicked_pixel.reshape(1, 2)
+            nearest_idx = int(np.argmin(np.einsum("ij,ij->i", deltas, deltas)))
+            point_index = int(self.valid_point_indices[nearest_idx])
+        return self._select_visible_point(frame_index=frame_index, point_index=point_index, source_view="2d", clicked_pixel=clicked_pixel)
 
     def lock_current_pair(self) -> LockedPair:
         if self.current_selection is None:
@@ -153,3 +146,32 @@ class ProjectionSession:
 
     def clear_for_new_source(self) -> None:
         self.clear_for_new_frame()
+
+    def _select_visible_point(
+        self,
+        *,
+        frame_index: int,
+        point_index: int,
+        source_view: Literal["2d", "3d"],
+        clicked_pixel: Optional[np.ndarray],
+    ) -> CurrentSelection:
+        match_indices = np.where(self.valid_point_indices == point_index)[0]
+        if match_indices.size == 0:
+            raise RuntimeError(f"Point index {point_index} is not visible in the current projection.")
+        matched_pixel = self.projected_pixels[int(match_indices[0])].copy()
+        point_xyz = self.points_xyz[point_index].copy()
+        depth = float(self.camera_points[point_index, 2])
+        resolved_click = None if clicked_pixel is None else np.asarray(clicked_pixel, dtype=np.float64).copy()
+        pixel_error = 0.0 if resolved_click is None else float(np.linalg.norm(resolved_click - matched_pixel))
+        selection = CurrentSelection(
+            frame_index=frame_index,
+            source_view=source_view,
+            clicked_pixel=resolved_click,
+            matched_pixel=matched_pixel,
+            point_index=point_index,
+            point_xyz=point_xyz,
+            depth=depth,
+            pixel_error=pixel_error,
+        )
+        self.current_selection = selection
+        return selection

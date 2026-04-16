@@ -19,9 +19,7 @@ from rerun_projection.projection_core import (
 )
 from rerun_projection.rerun_scene import (
     OVERLAY_CAMERA_PATH,
-    OVERLAY_CAMERA_RIG_PATH,
     SEMANTIC_CAMERA_PATH,
-    SEMANTIC_CAMERA_RIG_PATH,
     RerunSceneLogger,
 )
 from rerun_projection.session import ProjectionSession
@@ -46,8 +44,8 @@ def _workbench_blueprint():
                 origin="world",
                 contents=[
                     "world/ego_vehicle/lidar",
-                    SEMANTIC_CAMERA_RIG_PATH,
-                    OVERLAY_CAMERA_RIG_PATH,
+                    SEMANTIC_CAMERA_PATH,
+                    OVERLAY_CAMERA_PATH,
                     "selection/lidar/**",
                     "pairs/lidar/**",
                 ],
@@ -56,18 +54,13 @@ def _workbench_blueprint():
             rrb.Grid(
                 rrb.Spatial2DView(
                     origin=SEMANTIC_CAMERA_PATH,
-                    contents=[f"{SEMANTIC_CAMERA_PATH}/image"],
-                    name="Semantic Image",
+                    contents=["$origin/**", "selection/semantic_camera/**", "pairs/semantic_camera/**"],
+                    name="Semantic Camera",
                 ),
                 rrb.Spatial2DView(
                     origin=OVERLAY_CAMERA_PATH,
-                    contents=[
-                        f"{OVERLAY_CAMERA_PATH}/image",
-                        f"{OVERLAY_CAMERA_PATH}/projected_points",
-                        "selection/overlay_camera/**",
-                        "pairs/overlay_camera/**",
-                    ],
-                    name="Detection Overlay",
+                    contents=["$origin/**", "selection/overlay_camera/**", "pairs/overlay_camera/**"],
+                    name="Overlay Camera",
                 ),
                 grid_columns=2,
             ),
@@ -276,11 +269,20 @@ class ProjectionRuntime:
         if frame_index != self.current_index:
             self._load_frame_index(frame_index)
         position = payload.get("position")
-        self.session.select_3d(
-            frame_index=frame_index,
-            instance_id=payload.get("instance_id"),
-            position=None if position is None else np.asarray(position, dtype=np.float64),
-        )
+        position_array = None if position is None else np.asarray(position, dtype=np.float64)
+        entity_path = str(payload.get("entity_path", ""))
+        if entity_path in {f"{SEMANTIC_CAMERA_PATH}/projected_points", f"{OVERLAY_CAMERA_PATH}/projected_points"}:
+            self.session.select_projected_point(
+                frame_index=frame_index,
+                instance_id=payload.get("instance_id"),
+                position=position_array,
+            )
+        else:
+            self.session.select_3d(
+                frame_index=frame_index,
+                instance_id=payload.get("instance_id"),
+                position=position_array,
+            )
         self._sync_scene()
 
     def lock_current_pair(self) -> None:
