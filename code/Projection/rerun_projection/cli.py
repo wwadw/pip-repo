@@ -1,10 +1,24 @@
 import argparse
+import os
+import signal
 
 import uvicorn
 
 from rerun_projection.config import DEFAULT_CONFIG
 from rerun_projection.runtime import build_runtime
 from rerun_projection.server import create_app
+
+
+def build_exit_handler(runtime, exit_fn=os._exit):
+    def _handle_exit(_signum, _frame):
+        try:
+            recording = getattr(runtime, "recording", None)
+            if recording is not None:
+                recording.disconnect()
+        finally:
+            exit_fn(0)
+
+    return _handle_exit
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -36,6 +50,9 @@ def main() -> int:
     }
     runtime = build_runtime(test_mode=False, cli_overrides=cli_overrides)
     app = create_app(runtime=runtime)
+    exit_handler = build_exit_handler(runtime)
+    signal.signal(signal.SIGINT, exit_handler)
+    signal.signal(signal.SIGTERM, exit_handler)
     uvicorn.run(app, host=args.host, port=args.port)
     return 0
 

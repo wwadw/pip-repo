@@ -3,6 +3,7 @@ from types import MethodType, SimpleNamespace
 import numpy as np
 
 import rerun_projection.runtime as runtime_module
+from rerun_projection.api import build_router
 from rerun_projection.runtime import ProjectionRuntime
 
 
@@ -169,3 +170,44 @@ def test_projected_point_selection_from_camera_view_keeps_2d_source():
     assert payload["source_view"] == "2d"
     assert payload["clicked_pixel"] == [30.0, 30.0]
     assert payload["matched_pixel"] == [30.0, 30.0]
+
+
+def test_bootstrap_route_kicks_off_source_load_when_runtime_is_idle():
+    class _RuntimeStub:
+        def __init__(self) -> None:
+            self.test_mode = False
+            self.startup_state = "idle"
+            self.reloads = 0
+
+        def reload_source(self) -> None:
+            self.reloads += 1
+            self.startup_state = "building"
+
+        def bootstrap_payload(self):
+            return {"startup": {"state": self.startup_state, "error": None}}
+
+    runtime = _RuntimeStub()
+    router = build_router(runtime)
+    response = next(route.endpoint() for route in router.routes if route.path == "/api/bootstrap")
+
+    assert response["startup"]["state"] == "building"
+    assert runtime.reloads == 1
+
+
+def test_build_runtime_does_not_reload_source_before_server_starts(monkeypatch):
+    reloads = []
+    original_reload_source = runtime_module.ProjectionRuntime.reload_source
+
+    def _fake_reload_source(self):
+        reloads.append("called")
+
+    monkeypatch.setattr(runtime_module, "load_yaml_data", lambda _path: {})
+    monkeypatch.setattr(runtime_module.ProjectionRuntime, "reload_source", _fake_reload_source)
+
+    try:
+        runtime = runtime_module.build_runtime(test_mode=False, cli_overrides={"yaml_path": ""})
+    finally:
+        monkeypatch.setattr(runtime_module.ProjectionRuntime, "reload_source", original_reload_source)
+
+    assert isinstance(runtime, ProjectionRuntime)
+    assert reloads == []

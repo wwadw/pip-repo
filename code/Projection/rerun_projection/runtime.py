@@ -568,5 +568,4 @@ def build_runtime(*, test_mode: bool = False, cli_overrides: Dict[str, Any] | No
             camera_points=np.empty((0, 3), dtype=np.float64),
         ),
     )
-    runtime.reload_source()
     return runtime

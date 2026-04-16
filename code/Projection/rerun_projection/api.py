@@ -46,6 +46,8 @@ def build_router(runtime) -> APIRouter:
 
     @router.get("/api/bootstrap")
     def bootstrap():
+        if getattr(runtime, "startup_state", None) == "idle" and not getattr(runtime, "test_mode", False):
+            runtime.reload_source()
         return runtime.bootstrap_payload()
 
     @router.post("/api/config/projection")
