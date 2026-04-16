@@ -44,23 +44,6 @@ class RerunSceneLogger:
         self._log_camera_view(rr, SEMANTIC_CAMERA_PATH, frame.semantic_image, config, [96, 208, 255], lossless=True)
         self._log_camera_view(rr, OVERLAY_CAMERA_PATH, frame.overlay_image, config, [255, 178, 92], lossless=False)
 
-        valid_pixels = frame.projection.pixel_coordinates[frame.projection.in_image_mask]
-        valid_indices = frame.projection.valid_point_indices.tolist()
-        valid_colors = [point_colors[index] for index in valid_indices] if valid_indices else []
-
-        if self.view_kind in ("2d", "both"):
-            for camera_path in (SEMANTIC_CAMERA_PATH, OVERLAY_CAMERA_PATH):
-                rr.log(
-                    f"{camera_path}/projected_points",
-                    rr.Points2D(
-                        valid_pixels.tolist() if len(valid_pixels) else [],
-                        colors=valid_colors if valid_colors else None,
-                        radii=[1.6] * len(valid_pixels),
-                        keypoint_ids=valid_indices if valid_indices else [],
-                    ),
-                    recording=self.recording,
-                )
-
         if frame_index is not None:
             self.clear_interactions(frame_index)
 
@@ -157,7 +140,7 @@ class RerunSceneLogger:
             rr.Pinhole.from_fields(
                 image_from_camera=config.camera_matrix,
                 resolution=[config.image_width, config.image_height],
-                image_plane_distance=5.0,
+                image_plane_distance=0.35,
                 line_width=1.2,
                 color=color,
             ),

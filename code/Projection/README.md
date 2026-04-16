@@ -63,7 +63,8 @@ Example against the local smoke-test bag:
 - The main Rerun view uses a large 3D panel on top and two camera panels on the bottom. Each camera panel is rooted at the native Rerun camera entity, so the 2D views and 3D image planes share the same sensor path.
 - `Apply Source` reloads `bag`, semantic image topic, detection overlay topic, point cloud topic, and YAML source settings. It clears the current selection and locked pairs because point indices may no longer match.
 - `Apply Projection` updates camera intrinsics, distortion coefficients, `lidar_to_camera`, image size, and minimum depth. It keeps locked point pairs and reprojects them with the new parameters.
-- Selecting `world/ego_vehicle/lidar`, `world/ego_vehicle/semantic_camera/projected_points`, or `world/ego_vehicle/overlay_camera/projected_points` in the Rerun viewer sends the point instance back to Python, which highlights the corresponding point in 3D plus both camera views.
+- Selecting `world/ego_vehicle/lidar` in the Rerun viewer sends the point instance back to Python, which highlights the corresponding point in 3D plus both camera views.
+- The camera panels only show the image plane plus lightweight selection and locked-pair markers; they do not render the full projected point set.
 - `Lock Pair`, `Delete Last`, and `Clear All` manage persistent correspondence markers.
 
 ## Notes

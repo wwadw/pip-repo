@@ -126,8 +126,8 @@ def test_camera_entities_hold_image_plane_and_projected_points(monkeypatch):
     RerunSceneLogger(view_kind="both").log_current_state(_frame(), _config())
 
     paths = [path for path, _ in fake_rr.records]
-    assert "world/ego_vehicle/semantic_camera/projected_points" in paths
-    assert "world/ego_vehicle/overlay_camera/projected_points" in paths
+    assert "world/ego_vehicle/semantic_camera/projected_points" not in paths
+    assert "world/ego_vehicle/overlay_camera/projected_points" not in paths
 
     semantic_records = [value for path, value in fake_rr.records if path == "world/ego_vehicle/semantic_camera"]
     overlay_records = [value for path, value in fake_rr.records if path == "world/ego_vehicle/overlay_camera"]
@@ -161,3 +161,16 @@ def test_camera_transform_uses_child_from_parent_relation(monkeypatch):
 
     assert transform.kwargs["relation"] == fake_rr.TransformRelation.ChildFromParent
     assert np.allclose(transform.kwargs["translation"], [1.5, -0.2, 0.8])
+
+
+def test_camera_image_plane_distance_stays_close_to_sensor(monkeypatch):
+    fake_rr = FakeRerun()
+    monkeypatch.setitem(__import__("sys").modules, "rerun", fake_rr)
+
+    RerunSceneLogger(view_kind="both").log_current_state(_frame(), _config())
+
+    pinhole = next(
+        value for path, value in fake_rr.records if path == "world/ego_vehicle/semantic_camera" and isinstance(value, fake_rr.Pinhole)
+    )
+
+    assert pinhole.kwargs["image_plane_distance"] == 0.35
