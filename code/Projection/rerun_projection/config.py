@@ -6,9 +6,10 @@ import yaml
 
 
 DEFAULT_CONFIG = {
-    "bag_file": "",
-    "yaml_path": "",
+    "bag_file": "/home/ww/bags/b2biaopin/louti/2026-04-14-20-18-10_semantic.bag",
+    "yaml_path": "/home/ww/elevation_ws/src/elevation_mapping/elevation_mapping_demos/config/robots/minimal_semantic_robot.yaml",
     "image_topic": "/usb_cam/image_semantic_id",
+    "overlay_image_topic": "/usb_cam/image_raw",
     "pointcloud_topic": "/mfla/frame_cloud",
     "image_width": 1280,
     "image_height": 720,
@@ -24,6 +25,7 @@ class RuntimeConfig:
     bag_file: str
     yaml_path: str
     image_topic: str
+    overlay_image_topic: str
     pointcloud_topic: str
     image_width: int
     image_height: int
@@ -71,6 +73,7 @@ def resolve_runtime_config(*, yaml_data: Optional[Dict[str, Any]] = None, cli_ov
         "bag_file": overrides.get("bag_file", DEFAULT_CONFIG["bag_file"]),
         "yaml_path": overrides.get("yaml_path", DEFAULT_CONFIG["yaml_path"]),
         "image_topic": data.get("semantic_image_topic", DEFAULT_CONFIG["image_topic"]),
+        "overlay_image_topic": data.get("overlay_image_topic", DEFAULT_CONFIG["overlay_image_topic"]),
         "pointcloud_topic": _extract_pointcloud_topic(data, DEFAULT_CONFIG["pointcloud_topic"]),
         "image_width": camera.get("image_width", data.get("image_width", DEFAULT_CONFIG["image_width"])),
         "image_height": camera.get("image_height", data.get("image_height", DEFAULT_CONFIG["image_height"])),

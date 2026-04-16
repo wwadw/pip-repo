@@ -22,6 +22,16 @@ def test_cli_values_override_yaml_values():
     assert config.pointcloud_topic == "/yaml/cloud"
 
 
+def test_default_config_matches_legacy_projection_command():
+    config = resolve_runtime_config()
+
+    assert config.yaml_path == "/home/ww/elevation_ws/src/elevation_mapping/elevation_mapping_demos/config/robots/minimal_semantic_robot.yaml"
+    assert config.bag_file == "/home/ww/bags/b2biaopin/louti/2026-04-14-20-18-10_semantic.bag"
+    assert config.pointcloud_topic == "/mfla/frame_cloud"
+    assert config.image_topic == "/usb_cam/image_semantic_id"
+    assert config.overlay_image_topic == "/usb_cam/image_raw"
+
+
 def test_select_2d_matches_nearest_projected_point():
     session = ProjectionSession.for_test(
         projected_pixels=np.array([[10.0, 10.0], [30.0, 30.0]], dtype=np.float64),

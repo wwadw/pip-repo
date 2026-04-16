@@ -11,13 +11,16 @@ class FrameData:
     frame_index: int
     image_stamp: float
     cloud_stamp: float
+    overlay_stamp: float | None
     semantic_image: np.ndarray
+    overlay_image: np.ndarray
     points_xyz: np.ndarray
     projection: ProjectionResult
 
 
 @dataclass
 class CurrentSelection:
+    frame_index: int
     source_view: Literal["2d", "3d"]
     clicked_pixel: Optional[np.ndarray]
     matched_pixel: np.ndarray

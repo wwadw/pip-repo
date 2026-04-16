@@ -2,6 +2,7 @@ export type SourceDraft = {
   bag_file: string;
   yaml_path: string;
   image_topic: string;
+  overlay_image_topic: string;
   pointcloud_topic: string;
 };
 
@@ -14,14 +15,24 @@ export type ProjectionDraft = {
   min_depth: number;
 };
 
+export type CurrentFrame = {
+  frame_index: number;
+  image_stamp: number;
+  cloud_stamp: number;
+  overlay_stamp: number | null;
+  image_count: number;
+  cloud_count: number;
+  visible_points: number;
+  total_points: number;
+};
+
 export type WorkbenchState = {
   draftSource: SourceDraft;
   draftProjection: ProjectionDraft;
+  currentFrame: CurrentFrame | null;
   currentSelection: unknown;
   lockedPairs: unknown[];
   rerunGrpcUrl: string;
-  rerunGrpcUrl3d: string;
-  rerunGrpcUrl2d: string;
 };
 
 export function createDraftState(): WorkbenchState {
@@ -30,6 +41,7 @@ export function createDraftState(): WorkbenchState {
       bag_file: "",
       yaml_path: "",
       image_topic: "",
+      overlay_image_topic: "",
       pointcloud_topic: ""
     },
     draftProjection: {
@@ -40,11 +52,10 @@ export function createDraftState(): WorkbenchState {
       lidar_to_camera: [],
       min_depth: 0.05
     },
+    currentFrame: null,
     currentSelection: null,
     lockedPairs: [],
-    rerunGrpcUrl: "",
-    rerunGrpcUrl3d: "",
-    rerunGrpcUrl2d: ""
+    rerunGrpcUrl: ""
   };
 }
 
@@ -53,6 +64,7 @@ export function applyBootstrap(state: WorkbenchState, payload: any): void {
     bag_file: payload.config.bag_file,
     yaml_path: payload.config.yaml_path ?? "",
     image_topic: payload.config.image_topic,
+    overlay_image_topic: payload.config.overlay_image_topic,
     pointcloud_topic: payload.config.pointcloud_topic
   };
   state.draftProjection = {
@@ -63,9 +75,8 @@ export function applyBootstrap(state: WorkbenchState, payload: any): void {
     lidar_to_camera: payload.config.lidar_to_camera,
     min_depth: payload.config.min_depth
   };
+  state.currentFrame = payload.current_frame ?? null;
   state.currentSelection = payload.current_selection ?? null;
   state.lockedPairs = payload.locked_pairs ?? [];
   state.rerunGrpcUrl = payload.rerun_grpc_url ?? "";
-  state.rerunGrpcUrl3d = payload.rerun_grpc_url_3d ?? state.rerunGrpcUrl;
-  state.rerunGrpcUrl2d = payload.rerun_grpc_url_2d ?? state.rerunGrpcUrl;
 }

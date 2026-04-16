@@ -42,6 +42,93 @@ def load_bag_messages(bag_path: str, image_topic: str, pointcloud_topic: str) ->
     return images, clouds
 
 
+def load_topic_messages(bag_path: str, topic_name: str) -> List[BagMessage]:
+    import rosbag
+
+    entries: List[BagMessage] = []
+    if not topic_name:
+        return entries
+    with rosbag.Bag(bag_path) as bag:
+        for _, msg, stamp in bag.read_messages(topics=[topic_name]):
+            entries.append(BagMessage(stamp=_message_stamp(msg, stamp.to_sec()), msg=msg))
+    return entries
+
+
+def load_first_topic_message(bag_path: str, topic_name: str) -> BagMessage | None:
+    import rosbag
+
+    if not topic_name:
+        return None
+    with rosbag.Bag(bag_path) as bag:
+        for _, msg, stamp in bag.read_messages(topics=[topic_name]):
+            return BagMessage(stamp=_message_stamp(msg, stamp.to_sec()), msg=msg)
+    return None
+
+
+def load_topic_stamps(bag_path: str, topic_name: str) -> List[float]:
+    import rosbag
+
+    stamps: List[float] = []
+    if not topic_name:
+        return stamps
+    with rosbag.Bag(bag_path) as bag:
+        for _, msg, stamp in bag.read_messages(topics=[topic_name]):
+            stamps.append(_message_stamp(msg, stamp.to_sec()))
+    return stamps
+
+
+def load_topic_message_by_index(bag_path: str, topic_name: str, index: int) -> BagMessage | None:
+    import rosbag
+
+    if not topic_name or index < 0:
+        return None
+
+    with rosbag.Bag(bag_path) as bag:
+        for current_index, (_, msg, stamp) in enumerate(bag.read_messages(topics=[topic_name])):
+            if current_index == index:
+                return BagMessage(stamp=_message_stamp(msg, stamp.to_sec()), msg=msg)
+    return None
+
+
+def load_nearest_topic_message(bag_path: str, topic_name: str, target_stamp: float) -> BagMessage | None:
+    import rosbag
+
+    if not topic_name:
+        return None
+
+    previous: BagMessage | None = None
+    with rosbag.Bag(bag_path) as bag:
+        for _, msg, stamp in bag.read_messages(topics=[topic_name]):
+            entry = BagMessage(stamp=_message_stamp(msg, stamp.to_sec()), msg=msg)
+            if entry.stamp >= target_stamp:
+                if previous is None:
+                    return entry
+                if abs(previous.stamp - target_stamp) <= abs(entry.stamp - target_stamp):
+                    return previous
+                return entry
+            previous = entry
+    return previous
+
+
+def load_initial_aligned_messages(
+    bag_path: str,
+    *,
+    image_topic: str,
+    overlay_image_topic: str,
+    pointcloud_topic: str,
+) -> Tuple[BagMessage, BagMessage | None, BagMessage]:
+    image_entry = load_first_topic_message(bag_path, image_topic)
+    if image_entry is None:
+        raise RuntimeError(f"Bag did not contain image topic: {image_topic}")
+
+    overlay_entry = load_nearest_topic_message(bag_path, overlay_image_topic, image_entry.stamp)
+    cloud_entry = load_nearest_topic_message(bag_path, pointcloud_topic, image_entry.stamp)
+    if cloud_entry is None:
+        raise RuntimeError(f"Bag did not contain pointcloud topic near first image: {pointcloud_topic}")
+
+    return image_entry, overlay_entry, cloud_entry
+
+
 def find_nearest_message(entries: Sequence[BagMessage], stamps: Sequence[float], target_stamp: float) -> BagMessage:
     index = bisect.bisect_left(stamps, target_stamp)
     candidates: List[BagMessage] = []
@@ -63,9 +150,20 @@ def pointcloud2_to_xyz(msg) -> np.ndarray:
     return np.asarray(points, dtype=np.float64).reshape(-1, 3)
 
 
-def semantic_image_to_array(msg) -> np.ndarray:
+def ros_image_to_array(msg) -> np.ndarray:
     image = np.frombuffer(msg.data, dtype=np.uint8)
+    encoding = str(getattr(msg, "encoding", "mono8")).lower()
+    if encoding in ("rgb8", "bgr8"):
+        array = image.reshape(msg.height, msg.width, 3)
+        return array[..., ::-1] if encoding == "bgr8" else array
+    if encoding in ("rgba8", "bgra8"):
+        array = image.reshape(msg.height, msg.width, 4)
+        return array[..., [2, 1, 0, 3]] if encoding == "bgra8" else array
     return image.reshape(msg.height, msg.width)
+
+
+def semantic_image_to_array(msg) -> np.ndarray:
+    return ros_image_to_array(msg)
 
 
 def project_lidar_points(

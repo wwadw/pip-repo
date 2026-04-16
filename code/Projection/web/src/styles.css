@@ -1,63 +1,73 @@
 :root {
-  --bg: #07111a;
-  --panel: rgba(13, 25, 39, 0.88);
-  --panel-border: rgba(137, 198, 255, 0.12);
-  --panel-soft: rgba(16, 40, 61, 0.72);
-  --text: #eaf5ff;
-  --muted: #9db5c8;
-  --accent: #7ee0c4;
-  --accent-strong: #f7a64a;
-  --danger: #ff7d6b;
+  --bg: #07090b;
+  --canvas: #0b0f12;
+  --viewer-border: rgba(196, 212, 226, 0.12);
+  --sidebar-bg: #11161a;
+  --panel: #171d22;
+  --panel-border: rgba(206, 216, 226, 0.11);
+  --panel-strong: rgba(206, 216, 226, 0.18);
+  --panel-soft: #1d252c;
+  --text: #f2f6fa;
+  --muted: #9aa7b4;
+  --accent: #7ec7ff;
+  --accent-strong: #f4f7fa;
+  --success: #7be0b3;
+  --warning: #f2b86b;
+  --danger: #ee806d;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   color: var(--text);
-  background:
-    radial-gradient(circle at top left, rgba(66, 153, 225, 0.18), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(247, 166, 74, 0.15), transparent 24%),
-    linear-gradient(160deg, #050b11, #091723 48%, #06131e);
+  background: linear-gradient(180deg, #050709, #080b0d 28%, #090c10);
   font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
 }
 
 #app {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  min-height: 100vh;
+  grid-template-columns: minmax(0, 1fr) 372px;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px;
-  padding: 18px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 12px 0 12px 12px;
 }
 
 .viewer-panel {
   position: relative;
-  min-height: calc(100vh - 36px);
-  border: 1px solid var(--panel-border);
-  border-radius: 22px;
-  background: linear-gradient(180deg, rgba(14, 31, 48, 0.92), rgba(8, 20, 30, 0.96));
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.36);
+  min-height: 0;
+  height: calc(100vh - 24px);
+  border: 1px solid var(--viewer-border);
+  border-radius: 14px;
+  background: var(--canvas);
   overflow: hidden;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.36);
 }
 
 .panel-title {
   position: absolute;
-  top: 16px;
-  left: 18px;
+  top: 12px;
+  left: 14px;
   z-index: 2;
-  padding: 8px 12px;
+  padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(5, 13, 21, 0.68);
-  border: 1px solid rgba(126, 224, 196, 0.16);
-  color: var(--accent);
-  font-size: 13px;
+  background: rgba(6, 8, 9, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -65,53 +75,139 @@ body {
 .viewer-surface {
   width: 100%;
   height: 100%;
-}
-
-.image-panel {
-  outline: 1px solid rgba(247, 166, 74, 0.18);
-}
-
-.click-layer {
-  position: absolute;
-  inset: 0;
-  background: transparent;
-  border: 0;
-  cursor: crosshair;
+  min-height: 0;
 }
 
 .sidebar {
-  padding: 18px 18px 18px 0;
+  height: 100vh;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--sidebar-bg);
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .sidebar-shell {
   display: grid;
-  gap: 14px;
-  padding: 18px;
+  gap: 10px;
+  padding: 12px;
 }
 
+.sidebar-hero,
 .sidebar-section {
   display: grid;
-  gap: 10px;
-  padding: 16px;
+  gap: 12px;
+  padding: 14px;
   background: var(--panel);
   border: 1px solid var(--panel-border);
-  border-radius: 20px;
-  backdrop-filter: blur(14px);
+  border-radius: 12px;
 }
 
-.sidebar-section h2 {
-  margin: 0 0 4px;
-  font-size: 15px;
-  letter-spacing: 0.06em;
+.sidebar-hero h1,
+.sidebar-section h2,
+.sidebar-section h3 {
+  margin: 0;
+}
+
+.sidebar-hero h1 {
+  font-size: 18px;
+  letter-spacing: 0.02em;
+}
+
+.sidebar-hero p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.hero-kicker,
+.section-kicker {
+  color: var(--accent);
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-heading h2 {
+  font-size: 16px;
   color: var(--accent-strong);
+}
+
+.section-meta {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.metrics-grid,
+.compact-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.metrics-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.metric-card,
+.param-group,
+.empty-state,
+.pair-row {
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--panel-soft);
+}
+
+.metric-card {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.metric-card span {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.metric-card strong {
+  font-size: 13px;
+}
+
+.compact-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.param-group {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.param-group h3 {
+  font-size: 13px;
+  color: var(--accent-strong);
+  letter-spacing: 0.03em;
 }
 
 label {
   display: grid;
   gap: 6px;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 input,
@@ -123,50 +219,74 @@ button {
 input,
 textarea {
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid rgba(157, 181, 200, 0.18);
-  border-radius: 12px;
+  padding: 10px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
   color: var(--text);
-  background: var(--panel-soft);
+  background: #0f1418;
 }
 
 textarea {
-  min-height: 94px;
+  min-height: 100px;
   resize: vertical;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: rgba(126, 199, 255, 0.55);
+  box-shadow: 0 0 0 2px rgba(126, 199, 255, 0.12);
 }
 
 button {
   padding: 10px 12px;
-  border: 0;
-  border-radius: 12px;
-  color: #051017;
-  background: linear-gradient(135deg, var(--accent), #9bf0da);
+  border-radius: 10px;
+  border: 1px solid transparent;
   cursor: pointer;
   font-weight: 600;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.button-primary {
+  color: #071015;
+  background: linear-gradient(135deg, #8fe0ff, #7bd8b1);
+}
+
+.button-secondary {
+  color: var(--text);
+  background: #202a31;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.button-danger {
+  color: #fff4f1;
+  background: #4a2420;
+  border-color: rgba(238, 128, 109, 0.26);
+}
+
+button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
 }
 
 .button-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
-.button-row button:nth-child(2) {
-  background: linear-gradient(135deg, #ffd37b, #f7a64a);
+.playback-row {
+  margin-top: -2px;
 }
 
-.button-row button:nth-child(3) {
-  background: linear-gradient(135deg, #ff9f8e, var(--danger));
-}
-
-.status-card {
-  white-space: pre-wrap;
-  padding: 12px;
-  border-radius: 12px;
-  background: rgba(7, 18, 28, 0.88);
-  color: var(--muted);
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 12px;
+.range-input {
+  accent-color: var(--accent);
 }
 
 .pairs-list {
@@ -180,8 +300,6 @@ button {
   justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(7, 18, 28, 0.82);
 }
 
 .pair-chip {
@@ -198,25 +316,32 @@ button {
 
 .empty-state {
   padding: 14px 12px;
-  border-radius: 12px;
   color: var(--muted);
-  background: rgba(7, 18, 28, 0.82);
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1240px) {
   #app {
     grid-template-columns: 1fr;
   }
 
   .workspace {
-    grid-template-columns: 1fr;
+    padding: 12px;
   }
 
   .viewer-panel {
-    min-height: 48vh;
+    height: 58vh;
   }
 
   .sidebar {
-    padding: 0 18px 18px;
+    border-left: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+}
+
+@media (max-width: 720px) {
+  .metrics-grid,
+  .compact-grid,
+  .button-row {
+    grid-template-columns: 1fr;
   }
 }

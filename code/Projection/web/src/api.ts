@@ -53,3 +53,22 @@ export async function clearPairs() {
   const response = await fetch("/api/pairs/clear", { method: "POST" });
   return response.json();
 }
+
+export async function nextFrame() {
+  const response = await fetch("/api/frame/next", { method: "POST" });
+  return response.json();
+}
+
+export async function prevFrame() {
+  const response = await fetch("/api/frame/prev", { method: "POST" });
+  return response.json();
+}
+
+export async function setFrame(frameIndex: number) {
+  const response = await fetch("/api/frame/set", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ frame_index: frameIndex })
+  });
+  return response.json();
+}

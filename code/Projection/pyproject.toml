@@ -22,6 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "build",
   "httpx",
   "pytest",
 ]
@@ -30,7 +31,14 @@ dev = [
 projection-rerun = "rerun_projection.cli:main"
 
 [tool.setuptools]
+include-package-data = true
 packages = ["rerun_projection"]
+
+[tool.setuptools.package-data]
+rerun_projection = [
+  "web_dist/*",
+  "web_dist/assets/*",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -41,7 +41,8 @@ class ProjectionSession:
         )
 
     def select_2d(self, *, frame_index: int, pixel: np.ndarray) -> CurrentSelection:
-        del frame_index
+        if len(self.projected_pixels) == 0:
+            raise RuntimeError("No projected points are visible in the current frame.")
         deltas = self.projected_pixels - pixel.reshape(1, 2)
         distances = np.einsum("ij,ij->i", deltas, deltas)
         nearest_idx = int(np.argmin(distances))
@@ -50,6 +51,7 @@ class ProjectionSession:
         point_xyz = self.points_xyz[point_index]
         depth = float(self.camera_points[point_index, 2])
         selection = CurrentSelection(
+            frame_index=frame_index,
             source_view="2d",
             clicked_pixel=pixel,
             matched_pixel=matched_pixel,
@@ -62,7 +64,6 @@ class ProjectionSession:
         return selection
 
     def select_3d(self, *, frame_index: int, instance_id: Optional[int], position: Optional[np.ndarray]) -> CurrentSelection:
-        del frame_index
         if instance_id is not None:
             point_index = int(instance_id)
         else:
@@ -77,6 +78,7 @@ class ProjectionSession:
         point_xyz = self.points_xyz[point_index]
         depth = float(self.camera_points[point_index, 2])
         selection = CurrentSelection(
+            frame_index=frame_index,
             source_view="3d",
             clicked_pixel=None,
             matched_pixel=matched_pixel,
@@ -94,7 +96,7 @@ class ProjectionSession:
         selection = self.current_selection
         pair = LockedPair(
             pair_id=self._next_pair_id,
-            frame_index=0,
+            frame_index=selection.frame_index,
             source_view=selection.source_view,
             point_index=selection.point_index,
             point_xyz=selection.point_xyz.copy(),
@@ -123,6 +125,16 @@ class ProjectionSession:
             int(point_index): self.projected_pixels[idx]
             for idx, point_index in enumerate(self.valid_point_indices.tolist())
         }
+        if self.current_selection is not None:
+            if self.current_selection.point_index in pixel_map:
+                self.current_selection.matched_pixel = pixel_map[self.current_selection.point_index].copy()
+                self.current_selection.depth = float(self.camera_points[self.current_selection.point_index, 2])
+                if self.current_selection.clicked_pixel is not None:
+                    self.current_selection.pixel_error = float(
+                        np.linalg.norm(self.current_selection.clicked_pixel - self.current_selection.matched_pixel)
+                    )
+            else:
+                self.current_selection = None
         for pair in self.locked_pairs:
             if pair.point_index in pixel_map:
                 pair.projected_pixel = pixel_map[pair.point_index].copy()
@@ -134,7 +146,10 @@ class ProjectionSession:
     def clear_pairs(self) -> None:
         self.locked_pairs.clear()
 
-    def clear_for_new_source(self) -> None:
+    def clear_for_new_frame(self) -> None:
         self.current_selection = None
         self.locked_pairs.clear()
         self._next_pair_id = 1
+
+    def clear_for_new_source(self) -> None:
+        self.clear_for_new_frame()

@@ -17,6 +17,7 @@ class SourceConfigPayload(BaseModel):
     bag_file: str
     yaml_path: str = ""
     image_topic: str
+    overlay_image_topic: str
     pointcloud_topic: str
 
 
@@ -30,6 +31,10 @@ class Select3DPayload(BaseModel):
     entity_path: str
     instance_id: int | None = None
     position: list[float] | None = None
+
+
+class FrameIndexPayload(BaseModel):
+    frame_index: int
 
 
 def _model_dump(model: BaseModel) -> Dict[str, Any]:
@@ -76,6 +81,21 @@ def build_router(runtime) -> APIRouter:
     @router.post("/api/pairs/clear")
     def clear_pairs():
         runtime.clear_pairs()
+        return runtime.bootstrap_payload()
+
+    @router.post("/api/frame/next")
+    def next_frame():
+        runtime.next_frame()
+        return runtime.bootstrap_payload()
+
+    @router.post("/api/frame/prev")
+    def prev_frame():
+        runtime.prev_frame()
+        return runtime.bootstrap_payload()
+
+    @router.post("/api/frame/set")
+    def set_frame(payload: FrameIndexPayload):
+        runtime.set_frame(payload.frame_index)
         return runtime.bootstrap_payload()
 
     return router
