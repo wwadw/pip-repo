@@ -78,6 +78,25 @@ body {
   min-height: 0;
 }
 
+.click-layer {
+  position: absolute;
+  top: 70%;
+  right: 0;
+  bottom: 0;
+  left: 50%;
+  z-index: 3;
+  padding: 0;
+  border: 0;
+  border-radius: 0 0 14px 0;
+  background: transparent;
+  cursor: crosshair;
+}
+
+.click-layer:focus {
+  outline: 1px solid rgba(126, 199, 255, 0.42);
+  outline-offset: -1px;
+}
+
 .sidebar {
   height: 100vh;
   min-height: 0;

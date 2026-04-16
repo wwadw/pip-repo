@@ -2,13 +2,14 @@ import * as api from "./api";
 import { renderForms } from "./forms";
 import { applyBootstrap, createDraftState } from "./state";
 import "./styles.css";
-import { mountViewer, type ViewerHandle } from "./viewer";
+import { bindImageClickLayer, mountViewer, type ViewerHandle } from "./viewer";
 
 const state = createDraftState();
 let viewerHandle: ViewerHandle | null = null;
 let activeGrpcUrl = "";
 let viewerFrameIndex = 0;
 let syncedFrameIndex = 0;
+let unbindImageClickLayer: (() => void) | null = null;
 
 async function syncFrame(frameIndex: number): Promise<any | null> {
   if (frameIndex === syncedFrameIndex) {
@@ -50,6 +51,34 @@ async function remountViewer(grpcUrl: string, frameIndex: number): Promise<void>
   );
 }
 
+function ensureImageClickLayerBound(): void {
+  if (unbindImageClickLayer !== null) {
+    return;
+  }
+  const clickLayer = document.querySelector("#imageClickLayer") as HTMLElement | null;
+  if (clickLayer === null) {
+    return;
+  }
+  unbindImageClickLayer = bindImageClickLayer(clickLayer, {
+    getImageSize: () => ({
+      imageWidth: state.draftProjection.image_width,
+      imageHeight: state.draftProjection.image_height
+    }),
+    submit: async (pixel) => {
+      const frameIndex = viewerFrameIndex;
+      const syncedPayload = await syncFrame(frameIndex);
+      if (syncedPayload) {
+        await applyPayload(syncedPayload);
+      }
+      const payload = await api.select2d({
+        frame_index: frameIndex,
+        pixel
+      });
+      await applyPayload(payload);
+    }
+  });
+}
+
 function renderSidebar(): void {
   renderForms(document.querySelector("#sidebar") as HTMLElement, state, api, rerender);
 }
@@ -66,6 +95,7 @@ async function applyPayload(payload: any): Promise<void> {
     await remountViewer(nextGrpcUrl, viewerFrameIndex);
   }
 
+  ensureImageClickLayerBound();
   renderSidebar();
 }
 

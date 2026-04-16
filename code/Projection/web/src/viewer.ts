@@ -23,6 +23,20 @@ export type ViewerHandle = {
   stop: () => void;
 };
 
+type LayerPointArgs = {
+  x: number;
+  y: number;
+  layerWidth: number;
+  layerHeight: number;
+  imageWidth: number;
+  imageHeight: number;
+};
+
+type ImageClickLayerBindings = {
+  getImageSize: () => { imageWidth: number; imageHeight: number };
+  submit: (pixel: [number, number]) => Promise<void>;
+};
+
 export function selectionItemKey(item: SelectionItem): string | null {
   const selectablePaths = new Set([
     "world/ego_vehicle/lidar",
@@ -34,6 +48,62 @@ export function selectionItemKey(item: SelectionItem): string | null {
   const instance = item.instance_id ?? "none";
   const position = item.position?.join(",") ?? "none";
   return `${item.entity_path}:${instance}:${position}`;
+}
+
+export function mapLayerPointToImagePixel(args: LayerPointArgs): [number, number] | null {
+  if (args.layerWidth <= 0 || args.layerHeight <= 0 || args.imageWidth <= 0 || args.imageHeight <= 0) {
+    return null;
+  }
+
+  const scale = Math.min(args.layerWidth / args.imageWidth, args.layerHeight / args.imageHeight);
+  if (scale <= 0) {
+    return null;
+  }
+
+  const renderedWidth = args.imageWidth * scale;
+  const renderedHeight = args.imageHeight * scale;
+  const offsetX = (args.layerWidth - renderedWidth) / 2;
+  const offsetY = (args.layerHeight - renderedHeight) / 2;
+
+  if (
+    args.x < offsetX ||
+    args.x > offsetX + renderedWidth ||
+    args.y < offsetY ||
+    args.y > offsetY + renderedHeight
+  ) {
+    return null;
+  }
+
+  const imageX = Math.round((args.x - offsetX) / scale);
+  const imageY = Math.round((args.y - offsetY) / scale);
+  return [
+    Math.max(0, Math.min(args.imageWidth - 1, imageX)),
+    Math.max(0, Math.min(args.imageHeight - 1, imageY))
+  ];
+}
+
+export function bindImageClickLayer(element: HTMLElement, bindings: ImageClickLayerBindings): () => void {
+  const handleClick = (event: MouseEvent) => {
+    const rect = element.getBoundingClientRect();
+    const { imageWidth, imageHeight } = bindings.getImageSize();
+    const pixel = mapLayerPointToImagePixel({
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+      layerWidth: rect.width,
+      layerHeight: rect.height,
+      imageWidth,
+      imageHeight
+    });
+    if (pixel === null) {
+      return;
+    }
+    void bindings.submit(pixel);
+  };
+
+  element.addEventListener("click", handleClick);
+  return () => {
+    element.removeEventListener("click", handleClick);
+  };
 }
 
 export async function mountViewer(
