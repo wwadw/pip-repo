@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Projection Tools | pip.wgists.me</title>
+  <style>
+    :root {
+      --bg: #f5efe3;
+      --panel: rgba(255, 251, 245, 0.9);
+      --panel-strong: #fffaf2;
+      --text: #201a13;
+      --muted: #6d6256;
+      --line: rgba(56, 41, 20, 0.14);
+      --teal: #0f766e;
+      --shadow: 0 24px 70px rgba(51, 33, 14, 0.14);
+      --radius: 24px;
+      --mono: "SFMono-Regular", "Cascadia Code", "JetBrains Mono", "Fira Code", monospace;
+      --sans: "Avenir Next", "Segoe UI Variable", "PingFang SC", "Noto Sans", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.7;
+      background:
+        radial-gradient(circle at top left, rgba(200, 100, 40, 0.18), transparent 34%),
+        radial-gradient(circle at right 12% top 18%, rgba(15, 118, 110, 0.16), transparent 28%),
+        linear-gradient(180deg, #f5efe3, #efe4d1);
+    }
+
+    a {
+      color: #0c645d;
+    }
+
+    .page {
+      width: min(920px, calc(100% - 24px));
+      margin: 0 auto;
+      padding: 24px 0 40px;
+    }
+
+    .topbar,
+    .content {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+    }
+
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 20px;
+      margin-bottom: 18px;
+    }
+
+    .crumbs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      color: var(--muted);
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel-strong);
+      color: inherit;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .content {
+      padding: 28px 24px;
+    }
+
+    .content h1,
+    .content h2,
+    .content h3 {
+      margin: 0 0 14px;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+    }
+
+    .content h1 {
+      font-size: clamp(34px, 6vw, 54px);
+    }
+
+    .content h2 {
+      margin-top: 28px;
+      font-size: 28px;
+    }
+
+    .content h3 {
+      margin-top: 24px;
+      font-size: 22px;
+    }
+
+    .content p,
+    .content li {
+      color: var(--text);
+    }
+
+    .content ul,
+    .content ol {
+      padding-left: 22px;
+    }
+
+    .content code {
+      padding: 2px 6px;
+      border-radius: 8px;
+      background: rgba(15, 118, 110, 0.08);
+      font-family: var(--mono);
+      font-size: 0.95em;
+    }
+
+    .content pre {
+      overflow-x: auto;
+      padding: 16px;
+      border: 1px solid rgba(15, 118, 110, 0.16);
+      border-radius: 18px;
+      background: #172120;
+      color: #eafaf7;
+    }
+
+    .content pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+    }
+
+    @media (max-width: 720px) {
+      .content {
+        padding: 20px 16px;
+      }
+
+      .topbar {
+        padding: 14px 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="topbar">
+      <div class="crumbs">
+        <a href="../index.html">首页</a>
+        <span>/</span>
+        <a href="./index.html">使用文档</a>
+        <span>/</span>
+        <span>Projection Tools</span>
+      </div>
+      <a class="button" href="./Projection.md">查看 Markdown 源文档</a>
+    </div>
+    <article class="content">
+      <h1>Projection Tools</h1>
+      <p>用于 LiDAR-相机投影检查的 Rerun 工作台。</p>
+      <h2>安装</h2>
+      <p>建议在已 <code>source</code> ROS 环境后安装 wheel：</p>
+      <pre><code class="language-bash">uv pip install /home/ww/pip-repo/dist/Projection/projection_tools-0.1.0-py3-none-any.whl</code></pre>
+      <h2>启动</h2>
+      <p>最简单的使用方式：</p>
+      <pre><code class="language-bash">source /opt/ros/noetic/setup.bash
+projection-rerun \
+  --bag /path/to/input.bag \
+  --yaml /path/to/camera.yaml</code></pre>
+      <p>默认会启动本地 Web 服务：</p>
+      <ul>
+        <li><code>http://127.0.0.1:8765</code></li>
+      </ul>
+      <p>如果需要，也可以额外覆盖 topic：</p>
+      <pre><code class="language-bash">projection-rerun \
+  --bag /path/to/input.bag \
+  --yaml /path/to/camera.yaml \
+  --image-topic /camera/image_semantic \
+  --overlay-image-topic /camera/image_raw \
+  --cloud-topic /lidar/points</code></pre>
+      <h2>配置文件格式</h2>
+      <p>程序会从 YAML 中读取以下字段：</p>
+      <h3>顶层字段</h3>
+      <p>语义图像 topic</p>
+      <p>叠加显示图像 topic</p>
+      <p>点云 topic</p>
+      <ul>
+        <li><code>semantic_image_topic</code></li>
+        <li><code>overlay_image_topic</code></li>
+        <li><code>pointcloud_topic</code></li>
+      </ul>
+      <p>说明：</p>
+      <ul>
+        <li>如果没有 <code>pointcloud_topic</code>，程序还会尝试读取 <code>raw_pointcloud_topic</code> 或 <code>compensated_pointcloud_topic</code></li>
+        <li>也支持从 <code>input_sources.semantic_pointcloud.topic</code> 中提取点云 topic</li>
+      </ul>
+      <h3><code>semantic_camera</code> 字段</h3>
+      <p>图像宽度</p>
+      <p>图像高度</p>
+      <p>相机内参 <code>fx</code></p>
+      <p>相机内参 <code>fy</code></p>
+      <p>相机内参 <code>cx</code></p>
+      <p>相机内参 <code>cy</code></p>
+      <p>畸变参数数组</p>
+      <p><code>4 x 4</code> 外参矩阵，含旋转和平移</p>
+      <ul>
+        <li><code>image_width</code></li>
+        <li><code>image_height</code></li>
+        <li><code>camera_matrix.fx</code></li>
+        <li><code>camera_matrix.fy</code></li>
+        <li><code>camera_matrix.cx</code></li>
+        <li><code>camera_matrix.cy</code></li>
+        <li><code>distortion_coeffs</code></li>
+        <li><code>lidar_to_camera_transform</code></li>
+      </ul>
+      <h2>示例配置</h2>
+      <p>下面是一份可直接参考的 YAML 示例：</p>
+      <pre><code class="language-yaml">semantic_image_topic: /usb_cam/image_semantic_id
+overlay_image_topic: /usb_cam/image_raw
+pointcloud_topic: /mfla/frame_cloud
+
+semantic_camera:
+  image_width: 1280
+  image_height: 720
+
+  camera_matrix:
+    fx: 923.128
+    fy: 921.447
+    cx: 640.0
+    cy: 360.0
+
+  distortion_coeffs:
+    - 0.0123
+    - -0.0345
+    - 0.0001
+    - -0.0002
+    - 0.0
+
+  lidar_to_camera_transform:
+    - [0.0, -1.0, 0.0, 0.12]
+    - [0.0, 0.0, -1.0, 0.03]
+    - [1.0, 0.0, 0.0, 0.25]
+    - [0.0, 0.0, 0.0, 1.0]</code></pre>
+      <h2>启动示例</h2>
+      <pre><code class="language-bash">source /opt/ros/noetic/setup.bash
+projection-rerun \
+  --bag /home/ww/bags/demo.bag \
+  --yaml /home/ww/config/minimal_semantic_robot.yaml</code></pre>
+      <h2>运行前提</h2>
+      <ul>
+        <li>可用的 ROS 环境</li>
+        <li>能访问的 <code>rosbag</code></li>
+        <li>正确的 YAML 配置</li>
+      </ul>
+    </article>
+  </main>
+</body>
+</html>
