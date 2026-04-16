@@ -140,8 +140,6 @@ class RerunSceneLogger:
             rr.Pinhole.from_fields(
                 image_from_camera=config.camera_matrix,
                 resolution=[config.image_width, config.image_height],
-                image_plane_distance=0.35,
-                line_width=1.2,
                 color=color,
             ),
             recording=self.recording,

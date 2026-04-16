@@ -163,7 +163,7 @@ def test_camera_transform_uses_child_from_parent_relation(monkeypatch):
     assert np.allclose(transform.kwargs["translation"], [1.5, -0.2, 0.8])
 
 
-def test_camera_image_plane_distance_stays_close_to_sensor(monkeypatch):
+def test_camera_logger_leaves_image_plane_distance_to_blueprint_defaults(monkeypatch):
     fake_rr = FakeRerun()
     monkeypatch.setitem(__import__("sys").modules, "rerun", fake_rr)
 
@@ -173,4 +173,17 @@ def test_camera_image_plane_distance_stays_close_to_sensor(monkeypatch):
         value for path, value in fake_rr.records if path == "world/ego_vehicle/semantic_camera" and isinstance(value, fake_rr.Pinhole)
     )
 
-    assert pinhole.kwargs["image_plane_distance"] == 0.35
+    assert "image_plane_distance" not in pinhole.kwargs
+
+
+def test_camera_logger_leaves_line_width_to_rerun_default(monkeypatch):
+    fake_rr = FakeRerun()
+    monkeypatch.setitem(__import__("sys").modules, "rerun", fake_rr)
+
+    RerunSceneLogger(view_kind="both").log_current_state(_frame(), _config())
+
+    pinhole = next(
+        value for path, value in fake_rr.records if path == "world/ego_vehicle/semantic_camera" and isinstance(value, fake_rr.Pinhole)
+    )
+
+    assert "line_width" not in pinhole.kwargs

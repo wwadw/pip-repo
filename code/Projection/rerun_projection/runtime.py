@@ -36,6 +36,7 @@ def config_to_payload(config: RuntimeConfig) -> Dict[str, Any]:
 
 
 def _workbench_blueprint():
+    import rerun as rr
     from rerun import blueprint as rrb
 
     return rrb.Blueprint(
@@ -44,11 +45,11 @@ def _workbench_blueprint():
                 origin="world",
                 contents=[
                     "world/ego_vehicle/lidar",
-                    SEMANTIC_CAMERA_PATH,
                     OVERLAY_CAMERA_PATH,
                     "selection/lidar/**",
                     "pairs/lidar/**",
                 ],
+                defaults=[rr.Pinhole.from_fields(image_plane_distance=1.5)],
                 name="3D",
             ),
             rrb.Grid(
@@ -228,15 +229,16 @@ class ProjectionRuntime:
             ))
             return
         target_index = min(self.current_index, max(self._frame_count() - 1, 0))
-        recording, rerun_grpc_url, scene_loggers = self._rebuild_recording()
+        self.startup_state = "building"
+        self.startup_error = None
+        self._startup_generation += 1
         if self.recording is not None:
             self.recording.disconnect()
-        self.recording = recording
-        self.rerun_grpc_url = rerun_grpc_url
-        self.scene_loggers = scene_loggers
-        self._load_frame_index(target_index)
-        self.startup_state = "ready"
-        self.startup_error = None
+        self.recording = None
+        self.rerun_grpc_url = ""
+        self.scene_loggers = []
+        self.current_frame = None
+        self._start_recording_build(target_index=target_index)
 
     def next_frame(self) -> None:
         frame_count = self._frame_count()
@@ -305,21 +307,22 @@ class ProjectionRuntime:
         self._overlay_cache.clear()
         self._cloud_cache.clear()
 
-    def _start_recording_build(self) -> None:
+    def _start_recording_build(self, target_index: int = 0) -> None:
         generation = self._startup_generation
         self._startup_thread = threading.Thread(
             target=self._finish_background_startup,
-            args=(generation,),
+            args=(generation, target_index),
             daemon=True,
             name="rerun-recording-build",
         )
         self._startup_thread.start()
 
-    def _finish_background_startup(self, generation: int) -> None:
+    def _finish_background_startup(self, generation: int, target_index: int) -> None:
         recording = None
         try:
             recording, rerun_grpc_url, scene_loggers = self._rebuild_recording()
-            frame = self._compose_frame(0)
+            resolved_index = min(target_index, max(self._frame_count() - 1, 0))
+            frame = self._compose_frame(resolved_index)
         except Exception as exc:
             if recording is not None:
                 try:
@@ -343,7 +346,7 @@ class ProjectionRuntime:
         self.recording = recording
         self.rerun_grpc_url = rerun_grpc_url
         self.scene_loggers = scene_loggers
-        self.current_index = 0
+        self.current_index = resolved_index
         self._apply_frame(frame)
         self.startup_state = "ready"
         self.startup_error = None

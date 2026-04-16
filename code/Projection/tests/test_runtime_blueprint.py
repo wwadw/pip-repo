@@ -29,6 +29,15 @@ class _FakeSpatial2DView(_FakeBlueprintNode):
     pass
 
 
+class _FakePinhole:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
+    @classmethod
+    def from_fields(cls, **kwargs):
+        return cls(**kwargs)
+
+
 class _FakeBlueprintModule:
     Blueprint = _FakeBlueprint
     Vertical = _FakeVertical
@@ -38,7 +47,7 @@ class _FakeBlueprintModule:
 
 
 def test_workbench_blueprint_uses_camera_entities_as_2d_origins(monkeypatch):
-    fake_rerun = SimpleNamespace(blueprint=_FakeBlueprintModule)
+    fake_rerun = SimpleNamespace(blueprint=_FakeBlueprintModule, Pinhole=_FakePinhole)
     monkeypatch.setitem(__import__("sys").modules, "rerun", fake_rerun)
 
     blueprint = runtime_module._workbench_blueprint()
@@ -48,9 +57,12 @@ def test_workbench_blueprint_uses_camera_entities_as_2d_origins(monkeypatch):
     camera_grid = layout.children[1]
     semantic_view, overlay_view = camera_grid.children
 
-    assert "world/ego_vehicle/semantic_camera" in top_view.kwargs["contents"]
     assert "world/ego_vehicle/overlay_camera" in top_view.kwargs["contents"]
+    assert "world/ego_vehicle/semantic_camera" not in top_view.kwargs["contents"]
     assert "world/ego_vehicle/semantic_camera_rig" not in top_view.kwargs["contents"]
+    assert len(top_view.kwargs["defaults"]) == 1
+    assert isinstance(top_view.kwargs["defaults"][0], _FakePinhole)
+    assert top_view.kwargs["defaults"][0].kwargs["image_plane_distance"] == 1.5
     assert semantic_view.kwargs["origin"] == "world/ego_vehicle/semantic_camera"
     assert semantic_view.kwargs["contents"] == [
         "$origin/**",
