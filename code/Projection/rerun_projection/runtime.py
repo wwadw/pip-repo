@@ -180,15 +180,11 @@ class ProjectionRuntime:
             self.startup_state = "ready"
             self.startup_error = None
             return
-        self.image_stamps = load_topic_stamps(self.config.bag_file, self.config.image_topic)
-        self.overlay_stamps = load_topic_stamps(self.config.bag_file, self.config.overlay_image_topic)
-        self.cloud_stamps = load_topic_stamps(self.config.bag_file, self.config.pointcloud_topic)
-        if not self.image_stamps:
-            raise RuntimeError(f"Bag did not contain image topic: {self.config.image_topic}")
-        if not self.cloud_stamps:
-            raise RuntimeError(f"Bag did not contain pointcloud topic: {self.config.pointcloud_topic}")
-        self.frame_stamps = list(self.cloud_stamps)
         self._clear_caches()
+        self.image_stamps = []
+        self.overlay_stamps = []
+        self.cloud_stamps = []
+        self.frame_stamps = []
         self.current_index = 0
         self.current_frame = None
         self.session.clear_for_new_source()
@@ -200,7 +196,7 @@ class ProjectionRuntime:
         self.recording = None
         self.rerun_grpc_url = ""
         self.scene_loggers = []
-        self._start_recording_build()
+        self._start_recording_build(target_index=0, reload_topics=True)
 
     def apply_source(self, payload: Dict[str, Any]) -> None:
         values = config_to_payload(self.config)
@@ -238,7 +234,7 @@ class ProjectionRuntime:
         self.rerun_grpc_url = ""
         self.scene_loggers = []
         self.current_frame = None
-        self._start_recording_build(target_index=target_index)
+        self._start_recording_build(target_index=target_index, reload_topics=False)
 
     def next_frame(self) -> None:
         frame_count = self._frame_count()
@@ -307,19 +303,34 @@ class ProjectionRuntime:
         self._overlay_cache.clear()
         self._cloud_cache.clear()
 
-    def _start_recording_build(self, target_index: int = 0) -> None:
+    def _start_recording_build(self, target_index: int = 0, reload_topics: bool = False) -> None:
         generation = self._startup_generation
         self._startup_thread = threading.Thread(
             target=self._finish_background_startup,
-            args=(generation, target_index),
+            args=(generation, target_index, reload_topics),
             daemon=True,
             name="rerun-recording-build",
         )
         self._startup_thread.start()
 
-    def _finish_background_startup(self, generation: int, target_index: int) -> None:
+    def _finish_background_startup(self, generation: int, target_index: int, reload_topics: bool) -> None:
         recording = None
         try:
+            if reload_topics:
+                image_stamps = load_topic_stamps(self.config.bag_file, self.config.image_topic)
+                overlay_stamps = load_topic_stamps(self.config.bag_file, self.config.overlay_image_topic)
+                cloud_stamps = load_topic_stamps(self.config.bag_file, self.config.pointcloud_topic)
+                if not image_stamps:
+                    raise RuntimeError(f"Bag did not contain image topic: {self.config.image_topic}")
+                if not cloud_stamps:
+                    raise RuntimeError(f"Bag did not contain pointcloud topic: {self.config.pointcloud_topic}")
+                if generation != self._startup_generation:
+                    return
+                self.image_stamps = image_stamps
+                self.overlay_stamps = overlay_stamps
+                self.cloud_stamps = cloud_stamps
+                self.frame_stamps = list(cloud_stamps)
+                self._clear_caches()
             recording, rerun_grpc_url, scene_loggers = self._rebuild_recording()
             resolved_index = min(target_index, max(self._frame_count() - 1, 0))
             frame = self._compose_frame(resolved_index)

@@ -112,20 +112,22 @@ def test_reload_source_defers_recording_build(monkeypatch):
     runtime.test_mode = False
     started = []
 
-    monkeypatch.setattr(runtime_module, "load_topic_stamps", lambda *_args, **_kwargs: [1.0, 2.0])
+    def _unexpected_load_topic_stamps(*_args, **_kwargs):
+        raise AssertionError("reload_source should not load topic stamps synchronously")
 
     def _unexpected_rebuild(self) -> None:
         raise AssertionError("reload_source should not rebuild the recording synchronously")
 
-    def _fake_start_build(self, target_index: int = 0) -> None:
-        started.append(target_index)
+    def _fake_start_build(self, target_index: int = 0, reload_topics: bool = False) -> None:
+        started.append((target_index, reload_topics))
 
+    monkeypatch.setattr(runtime_module, "load_topic_stamps", _unexpected_load_topic_stamps)
     runtime._rebuild_recording = MethodType(_unexpected_rebuild, runtime)
     runtime._start_recording_build = MethodType(_fake_start_build, runtime)
 
     runtime.reload_source()
 
-    assert started == [0]
+    assert started == [(0, True)]
 
 
 def test_apply_projection_defers_recording_build(monkeypatch):
@@ -135,20 +137,18 @@ def test_apply_projection_defers_recording_build(monkeypatch):
     runtime.current_index = 2
     started = []
 
-    monkeypatch.setattr(runtime_module, "load_topic_stamps", lambda *_args, **_kwargs: [1.0, 2.0])
-
     def _unexpected_rebuild(self) -> None:
         raise AssertionError("apply_projection should not rebuild the recording synchronously")
 
-    def _fake_start_build(self, target_index: int = 0) -> None:
-        started.append(target_index)
+    def _fake_start_build(self, target_index: int = 0, reload_topics: bool = False) -> None:
+        started.append((target_index, reload_topics))
 
     runtime._rebuild_recording = MethodType(_unexpected_rebuild, runtime)
     runtime._start_recording_build = MethodType(_fake_start_build, runtime)
 
     runtime.apply_projection({"image_width": 800})
 
-    assert started == [2]
+    assert started == [(2, False)]
     assert runtime.startup_state == "building"
     assert runtime.startup_error is None
 
