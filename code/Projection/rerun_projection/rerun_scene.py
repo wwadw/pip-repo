@@ -125,12 +125,13 @@ class RerunSceneLogger:
             )
 
     def _log_camera_view(self, rr, path: str, image: np.ndarray, config, color: list[int], *, lossless: bool) -> None:
+        camera_pose = np.linalg.inv(config.lidar_to_camera)
         rr.log(
             path,
             rr.Transform3D(
-                translation=config.lidar_to_camera[:3, 3],
-                mat3x3=config.lidar_to_camera[:3, :3],
-                relation=rr.TransformRelation.ChildFromParent,
+                translation=camera_pose[:3, 3],
+                mat3x3=camera_pose[:3, :3],
+                relation=rr.TransformRelation.ParentFromChild,
             ),
             recording=self.recording,
         )

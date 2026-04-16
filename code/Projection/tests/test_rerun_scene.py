@@ -145,8 +145,8 @@ def test_camera_transform_uses_child_from_parent_relation(monkeypatch):
     config = _config()
     config.lidar_to_camera = np.array(
         [
-            [1.0, 0.0, 0.0, 1.5],
-            [0.0, 1.0, 0.0, -0.2],
+            [0.0, -1.0, 0.0, 1.5],
+            [1.0, 0.0, 0.0, -0.2],
             [0.0, 0.0, 1.0, 0.8],
             [0.0, 0.0, 0.0, 1.0],
         ],
@@ -159,8 +159,19 @@ def test_camera_transform_uses_child_from_parent_relation(monkeypatch):
         value for path, value in fake_rr.records if path == "world/ego_vehicle/semantic_camera" and isinstance(value, fake_rr.Transform3D)
     )
 
-    assert transform.kwargs["relation"] == fake_rr.TransformRelation.ChildFromParent
-    assert np.allclose(transform.kwargs["translation"], [1.5, -0.2, 0.8])
+    assert transform.kwargs["relation"] == fake_rr.TransformRelation.ParentFromChild
+    assert np.allclose(
+        transform.kwargs["mat3x3"],
+        np.array(
+            [
+                [0.0, 1.0, 0.0],
+                [-1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ],
+            dtype=np.float64,
+        ),
+    )
+    assert np.allclose(transform.kwargs["translation"], [0.2, 1.5, -0.8])
 
 
 def test_camera_logger_leaves_image_plane_distance_to_blueprint_defaults(monkeypatch):
