@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rerun Projection Workbench</title>
+  </head>
+  <body>
+    <div id="app">
+      <main class="workspace">
+        <section class="viewer-panel">
+          <div class="panel-title">3D Point Cloud</div>
+          <div id="viewer3d" class="viewer-surface"></div>
+        </section>
+        <section class="viewer-panel image-panel">
+          <div class="panel-title">2D Image Projection</div>
+          <div id="viewer2d" class="viewer-surface"></div>
+          <button id="imageClickLayer" class="click-layer" aria-label="2D image click capture"></button>
+        </section>
+      </main>
+      <aside id="sidebar" class="sidebar"></aside>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

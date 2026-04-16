@@ -58,6 +58,8 @@ logs/*
 __pycache__/
 *.egg-info/
 .cache
+*.pyc
+.venv/
 
 # other
 CATKIN_IGNORE
@@ -70,3 +72,5 @@ CLUADE.md
 superpowers/
 .worktrees/
 .codex
+node_modules/
+code/Projection/web/dist/

@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "projection-tools"
+version = "0.1.0"
+description = "LiDAR-camera projection and Rerun workbench tools"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy",
+  "opencv-python",
+  "scipy",
+  "pyyaml",
+  "rospkg",
+  "pycryptodomex",
+  "python-gnupg",
+  "fastapi",
+  "uvicorn",
+  "rerun-sdk==0.31.3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx",
+  "pytest",
+]
+
+[project.scripts]
+projection-rerun = "rerun_projection.cli:main"
+
+[tool.setuptools]
+packages = ["rerun_projection"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
