@@ -139,6 +139,25 @@ body {
   line-height: 1.45;
 }
 
+.status-banner {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.status-banner-loading {
+  background: rgba(126, 199, 255, 0.1);
+  border: 1px solid rgba(126, 199, 255, 0.2);
+  color: #d9f1ff;
+}
+
+.status-banner-error {
+  background: rgba(238, 128, 109, 0.12);
+  border: 1px solid rgba(238, 128, 109, 0.22);
+  color: #ffe6e1;
+}
+
 .hero-kicker,
 .section-kicker {
   color: var(--accent);

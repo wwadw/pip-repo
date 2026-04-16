@@ -10,6 +10,7 @@ let activeGrpcUrl = "";
 let viewerFrameIndex = 0;
 let syncedFrameIndex = 0;
 let unbindImageClickLayer: (() => void) | null = null;
+let bootstrapPollHandle: number | null = null;
 
 async function syncFrame(frameIndex: number): Promise<any | null> {
   if (frameIndex === syncedFrameIndex) {
@@ -65,6 +66,9 @@ function ensureImageClickLayerBound(): void {
       imageHeight: state.draftProjection.image_height
     }),
     submit: async (pixel) => {
+      if (state.startup.state !== "ready") {
+        return;
+      }
       const frameIndex = viewerFrameIndex;
       const syncedPayload = await syncFrame(frameIndex);
       if (syncedPayload) {
@@ -77,6 +81,24 @@ function ensureImageClickLayerBound(): void {
       await applyPayload(payload);
     }
   });
+}
+
+function scheduleBootstrapPoll(): void {
+  if (bootstrapPollHandle !== null) {
+    return;
+  }
+  bootstrapPollHandle = window.setTimeout(() => {
+    bootstrapPollHandle = null;
+    void bootstrap();
+  }, 1000);
+}
+
+function clearBootstrapPoll(): void {
+  if (bootstrapPollHandle === null) {
+    return;
+  }
+  window.clearTimeout(bootstrapPollHandle);
+  bootstrapPollHandle = null;
 }
 
 function renderSidebar(): void {
@@ -93,6 +115,16 @@ async function applyPayload(payload: any): Promise<void> {
   if (nextGrpcUrl && nextGrpcUrl !== activeGrpcUrl) {
     activeGrpcUrl = nextGrpcUrl;
     await remountViewer(nextGrpcUrl, viewerFrameIndex);
+  } else if (!nextGrpcUrl && activeGrpcUrl) {
+    viewerHandle?.stop();
+    viewerHandle = null;
+    activeGrpcUrl = "";
+  }
+
+  if (state.startup.state === "building") {
+    scheduleBootstrapPoll();
+  } else {
+    clearBootstrapPoll();
   }
 
   ensureImageClickLayerBound();

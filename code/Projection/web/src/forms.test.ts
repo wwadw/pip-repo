@@ -31,6 +31,7 @@ describe("forms", () => {
     expect(source).toContain("Viewer Timeline");
     expect(source).toContain("Camera Matrix");
     expect(source).toContain("LiDAR To Camera");
+    expect(source).toContain("Preparing recording");
     expect(source).not.toContain("Play");
     expect(source).not.toContain("Pause");
     expect(source).not.toContain("<h2>Selection</h2>");

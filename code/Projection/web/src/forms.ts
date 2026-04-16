@@ -49,7 +49,13 @@ export function renderForms(
   api: ApiShape,
   onRefresh: (payload: any) => void
 ) {
+  const isBuilding = state.startup.state === "building";
   const canLock = state.currentSelection !== null;
+  const startupNotice = isBuilding
+    ? `<div class="status-banner status-banner-loading">Preparing recording. The page is up now, and the full bag is still being indexed in the background.</div>`
+    : state.startup.state === "error"
+      ? `<div class="status-banner status-banner-error">Recording failed to initialize: ${state.startup.error ?? "Unknown error"}</div>`
+      : "";
 
   container.innerHTML = `
     <div class="sidebar-shell">
@@ -57,6 +63,7 @@ export function renderForms(
         <div class="hero-kicker">Projection Workbench</div>
         <h1>Parameters</h1>
         <p>Use the Rerun time bar under the viewer as the single playback control. The right sidebar only handles bag source and calibration edits.</p>
+        ${startupNotice}
       </section>
 
       <section class="sidebar-section">
@@ -81,7 +88,7 @@ export function renderForms(
         <label>Semantic Image Topic<input id="image_topic" value="${state.draftSource.image_topic}" /></label>
         <label>Detection Overlay Topic<input id="overlay_image_topic" value="${state.draftSource.overlay_image_topic}" /></label>
         <label>Point Cloud Topic<input id="pointcloud_topic" value="${state.draftSource.pointcloud_topic}" /></label>
-        <button id="applySource" class="button-primary">Apply Source</button>
+        <button id="applySource" class="button-primary" ${isBuilding ? "disabled" : ""}>Apply Source</button>
       </section>
 
       <section class="sidebar-section">
@@ -114,7 +121,7 @@ export function renderForms(
           <label>Extrinsic Matrix<textarea id="lidar_to_camera">${matrixToMultiline(state.draftProjection.lidar_to_camera)}</textarea></label>
         </div>
 
-        <button id="applyProjection" class="button-primary">Apply Projection</button>
+        <button id="applyProjection" class="button-primary" ${isBuilding ? "disabled" : ""}>Apply Projection</button>
       </section>
 
       <section class="sidebar-section">
@@ -126,9 +133,9 @@ export function renderForms(
           <div class="section-meta">${state.lockedPairs.length} saved</div>
         </div>
         <div class="button-row">
-          <button id="lockPair" class="button-primary" ${canLock ? "" : "disabled"}>Lock Pair</button>
-          <button id="deleteLastPair" class="button-secondary">Delete Last</button>
-          <button id="clearPairs" class="button-danger">Clear All</button>
+          <button id="lockPair" class="button-primary" ${canLock && !isBuilding ? "" : "disabled"}>Lock Pair</button>
+          <button id="deleteLastPair" class="button-secondary" ${isBuilding ? "disabled" : ""}>Delete Last</button>
+          <button id="clearPairs" class="button-danger" ${isBuilding ? "disabled" : ""}>Clear All</button>
         </div>
         <div class="pairs-list">${renderLockedPairs(state)}</div>
       </section>

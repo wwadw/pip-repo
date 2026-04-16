@@ -28,6 +28,10 @@ describe("state", () => {
         visible_points: 120,
         total_points: 456
       },
+      startup: {
+        state: "building",
+        error: null
+      },
       current_selection: null,
       locked_pairs: []
     });
@@ -37,5 +41,6 @@ describe("state", () => {
     expect(state.draftSource.overlay_image_topic).toBe("/camera/raw");
     expect(state.draftProjection.image_width).toBe(1280);
     expect(state.currentFrame?.frame_index).toBe(12);
+    expect(state.startup.state).toBe("building");
   });
 });

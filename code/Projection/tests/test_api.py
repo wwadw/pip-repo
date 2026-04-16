@@ -2,6 +2,7 @@ from types import MethodType, SimpleNamespace
 
 import numpy as np
 
+import rerun_projection.runtime as runtime_module
 from rerun_projection.runtime import ProjectionRuntime
 
 
@@ -93,3 +94,35 @@ def test_set_frame_clears_selection_and_locked_pairs_before_loading_new_frame():
     assert runtime.session.current_selection is None
     assert runtime.session.locked_pairs == []
     assert runtime.current_index == 1
+
+
+def test_bootstrap_payload_exposes_startup_status():
+    runtime = ProjectionRuntime.for_test()
+    runtime.startup_state = "building"
+    runtime.startup_error = None
+
+    payload = runtime.bootstrap_payload()
+
+    assert payload["startup"]["state"] == "building"
+    assert payload["startup"]["error"] is None
+
+
+def test_reload_source_defers_recording_build(monkeypatch):
+    runtime = ProjectionRuntime.for_test()
+    runtime.test_mode = False
+    started = []
+
+    monkeypatch.setattr(runtime_module, "load_topic_stamps", lambda *_args, **_kwargs: [1.0, 2.0])
+
+    def _unexpected_rebuild(self) -> None:
+        raise AssertionError("reload_source should not rebuild the recording synchronously")
+
+    def _fake_start_build(self) -> None:
+        started.append("background")
+
+    runtime._rebuild_recording = MethodType(_unexpected_rebuild, runtime)
+    runtime._start_recording_build = MethodType(_fake_start_build, runtime)
+
+    runtime.reload_source()
+
+    assert started == ["background"]

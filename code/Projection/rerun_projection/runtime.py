@@ -1,6 +1,7 @@
 from bisect import bisect_left
 from dataclasses import asdict, dataclass, field
 import socket
+import threading
 from typing import Any, Dict, List
 
 import numpy as np
@@ -126,6 +127,8 @@ class ProjectionRuntime:
     session: ProjectionSession
     rerun_grpc_url: str = ""
     test_mode: bool = False
+    startup_state: str = "idle"
+    startup_error: str | None = None
     recording: object | None = None
     scene_loggers: List[RerunSceneLogger] = field(default_factory=list)
     frame_stamps: List[float] = field(default_factory=list)
@@ -137,6 +140,8 @@ class ProjectionRuntime:
     _image_cache: Dict[int, BagMessage] = field(default_factory=dict)
     _overlay_cache: Dict[int, BagMessage] = field(default_factory=dict)
     _cloud_cache: Dict[int, BagMessage] = field(default_factory=dict)
+    _startup_thread: threading.Thread | None = field(default=None, repr=False)
+    _startup_generation: int = 0
 
     @classmethod
     def for_test(cls) -> "ProjectionRuntime":
@@ -159,12 +164,17 @@ class ProjectionRuntime:
             session=session,
             rerun_grpc_url="rerun+http://127.0.0.1:9876/proxy",
             test_mode=True,
+            startup_state="ready",
         )
 
     def bootstrap_payload(self) -> Dict[str, Any]:
         return {
             "config": config_to_payload(self.config),
             "rerun_grpc_url": self.rerun_grpc_url,
+            "startup": {
+                "state": self.startup_state,
+                "error": self.startup_error,
+            },
             "current_frame": self._frame_payload(),
             "current_selection": self._selection_payload(),
             "locked_pairs": self._locked_pair_payloads(),
@@ -173,6 +183,8 @@ class ProjectionRuntime:
     def reload_source(self) -> None:
         if self.test_mode:
             self.session.clear_for_new_source()
+            self.startup_state = "ready"
+            self.startup_error = None
             return
         self.image_stamps = load_topic_stamps(self.config.bag_file, self.config.image_topic)
         self.overlay_stamps = load_topic_stamps(self.config.bag_file, self.config.overlay_image_topic)
@@ -184,9 +196,17 @@ class ProjectionRuntime:
         self.frame_stamps = list(self.cloud_stamps)
         self._clear_caches()
         self.current_index = 0
+        self.current_frame = None
         self.session.clear_for_new_source()
-        self._rebuild_recording()
-        self._load_frame_index(0)
+        self.startup_state = "building"
+        self.startup_error = None
+        self._startup_generation += 1
+        if self.recording is not None:
+            self.recording.disconnect()
+        self.recording = None
+        self.rerun_grpc_url = ""
+        self.scene_loggers = []
+        self._start_recording_build()
 
     def apply_source(self, payload: Dict[str, Any]) -> None:
         values = config_to_payload(self.config)
@@ -215,8 +235,15 @@ class ProjectionRuntime:
             ))
             return
         target_index = min(self.current_index, max(self._frame_count() - 1, 0))
-        self._rebuild_recording()
+        recording, rerun_grpc_url, scene_loggers = self._rebuild_recording()
+        if self.recording is not None:
+            self.recording.disconnect()
+        self.recording = recording
+        self.rerun_grpc_url = rerun_grpc_url
+        self.scene_loggers = scene_loggers
         self._load_frame_index(target_index)
+        self.startup_state = "ready"
+        self.startup_error = None
 
     def next_frame(self) -> None:
         frame_count = self._frame_count()
@@ -276,17 +303,56 @@ class ProjectionRuntime:
         self._overlay_cache.clear()
         self._cloud_cache.clear()
 
-    def _rebuild_recording(self) -> None:
-        import rerun as rr
+    def _start_recording_build(self) -> None:
+        generation = self._startup_generation
+        self._startup_thread = threading.Thread(
+            target=self._finish_background_startup,
+            args=(generation,),
+            daemon=True,
+            name="rerun-recording-build",
+        )
+        self._startup_thread.start()
 
-        if self.recording is not None:
-            self.recording.disconnect()
+    def _finish_background_startup(self, generation: int) -> None:
+        recording = None
+        try:
+            recording, rerun_grpc_url, scene_loggers = self._rebuild_recording()
+            frame = self._compose_frame(0)
+        except Exception as exc:
+            if recording is not None:
+                try:
+                    recording.disconnect()
+                except Exception:
+                    pass
+            if generation != self._startup_generation:
+                return
+            self.startup_state = "error"
+            self.startup_error = f"{type(exc).__name__}: {exc}"
+            self.rerun_grpc_url = ""
+            self.recording = None
+            self.scene_loggers = []
+            self.current_frame = None
+            return
+
+        if generation != self._startup_generation:
+            recording.disconnect()
+            return
+
+        self.recording = recording
+        self.rerun_grpc_url = rerun_grpc_url
+        self.scene_loggers = scene_loggers
+        self.current_index = 0
+        self._apply_frame(frame)
+        self.startup_state = "ready"
+        self.startup_error = None
+
+    def _rebuild_recording(self) -> tuple[object, str, List[RerunSceneLogger]]:
+        import rerun as rr
 
         recording = rr.RecordingStream("rerun_projection_workbench")
         port = _find_free_port()
-        self.rerun_grpc_url = recording.serve_grpc(grpc_port=port, default_blueprint=_workbench_blueprint())
-        self.recording = recording
-        self.scene_loggers = [RerunSceneLogger(recording, view_kind="both")]
+        rerun_grpc_url = recording.serve_grpc(grpc_port=port, default_blueprint=_workbench_blueprint())
+        scene_loggers = [RerunSceneLogger(recording, view_kind="both")]
 
         cloud_loader = _SequentialTopicLoader(self.config.bag_file, self.config.pointcloud_topic)
         image_loader = _SequentialTopicLoader(self.config.bag_file, self.config.image_topic)
@@ -297,7 +363,7 @@ class ProjectionRuntime:
                 image_entry = image_loader.get(_nearest_index(self.image_stamps, cloud_entry.stamp))
                 overlay_entry = overlay_loader.get(_nearest_index(self.overlay_stamps, cloud_entry.stamp)) if overlay_loader else None
                 frame = self._frame_from_entries(frame_index, image_entry, overlay_entry, cloud_entry)
-                for logger in self.scene_loggers:
+                for logger in scene_loggers:
                     logger.log_current_state(frame, self.config, frame_index=frame_index)
         finally:
             cloud_loader.close()
@@ -305,6 +371,7 @@ class ProjectionRuntime:
             if overlay_loader is not None:
                 overlay_loader.close()
         rr.reset_time(recording=recording)
+        return recording, rerun_grpc_url, scene_loggers
 
     def _load_frame_index(self, index: int) -> None:
         self.current_index = index

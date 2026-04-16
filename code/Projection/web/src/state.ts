@@ -26,6 +26,11 @@ export type CurrentFrame = {
   total_points: number;
 };
 
+export type StartupStatus = {
+  state: "idle" | "building" | "ready" | "error";
+  error: string | null;
+};
+
 export type WorkbenchState = {
   draftSource: SourceDraft;
   draftProjection: ProjectionDraft;
@@ -33,6 +38,7 @@ export type WorkbenchState = {
   currentSelection: unknown;
   lockedPairs: unknown[];
   rerunGrpcUrl: string;
+  startup: StartupStatus;
 };
 
 export function createDraftState(): WorkbenchState {
@@ -55,7 +61,11 @@ export function createDraftState(): WorkbenchState {
     currentFrame: null,
     currentSelection: null,
     lockedPairs: [],
-    rerunGrpcUrl: ""
+    rerunGrpcUrl: "",
+    startup: {
+      state: "idle",
+      error: null
+    }
   };
 }
 
@@ -79,4 +89,5 @@ export function applyBootstrap(state: WorkbenchState, payload: any): void {
   state.currentSelection = payload.current_selection ?? null;
   state.lockedPairs = payload.locked_pairs ?? [];
   state.rerunGrpcUrl = payload.rerun_grpc_url ?? "";
+  state.startup = payload.startup ?? { state: "ready", error: null };
 }
