@@ -1,45 +1,34 @@
 # Projection Tools
 
-LiDAR-camera projection utilities. The legacy `Projection.py` Open3D/OpenCV viewer is still available, and the new Rerun workbench adds a nuScenes-style Rerun layout with a web control panel for parameter editing.
+用于 LiDAR-相机投影检查的 Rerun 工作台。
 
-## Rerun Workbench
+## 安装
 
-Install in a ROS-capable environment with Python 3.10 or newer for the Rerun workbench:
+建议在已 `source` ROS 环境后安装 wheel：
 
 ```bash
-cd /home/ww/pip-repo/.worktrees/rerun-projection-workbench/code/Projection
+uv pip install /home/ww/pip-repo/dist/Projection/projection_tools-0.1.0-py3-none-any.whl
+```
+
+## 启动
+
+最简单的使用方式：
+
+```bash
 source /opt/ros/noetic/setup.bash
-uv venv .venv --python python3 --system-site-packages
-env UV_CACHE_DIR=/tmp/uv-cache uv pip install --python .venv/bin/python -e ".[dev]"
-cd web
-npm install
-npm run build
-cd ..
-.venv/bin/projection-rerun
+projection-rerun \
+  --bag /path/to/input.bag \
+  --yaml /path/to/camera.yaml
 ```
 
-Build an installable package after the frontend bundle has been generated:
+默认会启动本地 Web 服务：
+
+- `http://127.0.0.1:8765`
+
+如果需要，也可以额外覆盖 topic：
 
 ```bash
-cd /home/ww/pip-repo/.worktrees/rerun-projection-workbench/code/Projection
-cd web
-npm run build
-cd ..
-.venv/bin/python -m build --no-isolation
-.venv/bin/python -m pip install dist/projection_tools-0.1.0-py3-none-any.whl
-projection-rerun
-```
-
-The default launch matches the current legacy debugging command:
-
-```bash
-.venv/bin/projection-rerun
-```
-
-You can also pass overrides that will be pre-filled in the web panel:
-
-```bash
-.venv/bin/projection-rerun \
+projection-rerun \
   --bag /path/to/input.bag \
   --yaml /path/to/camera.yaml \
   --image-topic /camera/image_semantic \
@@ -47,30 +36,87 @@ You can also pass overrides that will be pre-filled in the web panel:
   --cloud-topic /lidar/points
 ```
 
-Example against the local smoke-test bag:
+## 配置文件格式
 
-```bash
-.venv/bin/projection-rerun \
-  --yaml /home/ww/elevation_ws/src/elevation_mapping/elevation_mapping_demos/config/robots/minimal_semantic_robot.yaml \
-  --bag /home/ww/bags/b2biaopin/louti/2026-04-14-20-18-10_semantic.bag \
-  --image-topic /usb_cam/image_semantic_id \
-  --overlay-image-topic /usb_cam/image_raw \
-  --cloud-topic /mfla/frame_cloud
+程序会从 YAML 中读取以下字段：
+
+### 顶层字段
+
+- `semantic_image_topic`
+  语义图像 topic
+- `overlay_image_topic`
+  叠加显示图像 topic
+- `pointcloud_topic`
+  点云 topic
+
+说明：
+
+- 如果没有 `pointcloud_topic`，程序还会尝试读取 `raw_pointcloud_topic` 或 `compensated_pointcloud_topic`
+- 也支持从 `input_sources.semantic_pointcloud.topic` 中提取点云 topic
+
+### `semantic_camera` 字段
+
+- `image_width`
+  图像宽度
+- `image_height`
+  图像高度
+- `camera_matrix.fx`
+  相机内参 `fx`
+- `camera_matrix.fy`
+  相机内参 `fy`
+- `camera_matrix.cx`
+  相机内参 `cx`
+- `camera_matrix.cy`
+  相机内参 `cy`
+- `distortion_coeffs`
+  畸变参数数组
+- `lidar_to_camera_transform`
+  `4 x 4` 外参矩阵，含旋转和平移
+
+## 示例配置
+
+下面是一份可直接参考的 YAML 示例：
+
+```yaml
+semantic_image_topic: /usb_cam/image_semantic_id
+overlay_image_topic: /usb_cam/image_raw
+pointcloud_topic: /mfla/frame_cloud
+
+semantic_camera:
+  image_width: 1280
+  image_height: 720
+
+  camera_matrix:
+    fx: 923.128
+    fy: 921.447
+    cx: 640.0
+    cy: 360.0
+
+  distortion_coeffs:
+    - 0.0123
+    - -0.0345
+    - 0.0001
+    - -0.0002
+    - 0.0
+
+  lidar_to_camera_transform:
+    - [0.0, -1.0, 0.0, 0.12]
+    - [0.0, 0.0, -1.0, 0.03]
+    - [1.0, 0.0, 0.0, 0.25]
+    - [0.0, 0.0, 0.0, 1.0]
 ```
 
-## Web Panel Behavior
+## 启动示例
 
-- The main Rerun view uses a large 3D panel on top and two camera panels on the bottom. Each camera panel is rooted at the native Rerun camera entity, so the 2D views and 3D image planes share the same sensor path.
-- The 3D panel only shows the overlay camera image plane. The semantic camera stays available in 2D without adding a second overlapping frustum in 3D.
-- `Apply Source` reloads `bag`, semantic image topic, detection overlay topic, point cloud topic, and YAML source settings. It clears the current selection and locked pairs because point indices may no longer match.
-- `Apply Projection` updates camera intrinsics, distortion coefficients, `lidar_to_camera`, image size, and minimum depth. It keeps locked point pairs and reprojects them with the new parameters.
-- Selecting `world/ego_vehicle/lidar` in the Rerun viewer sends the point instance back to Python, which highlights the corresponding point in 3D plus both camera views.
-- The camera panels only show the image plane plus lightweight selection and locked-pair markers; they do not render the full projected point set.
-- `Lock Pair`, `Delete Last`, and `Clear All` manage persistent correspondence markers.
+```bash
+source /opt/ros/noetic/setup.bash
+projection-rerun \
+  --bag /home/ww/bags/demo.bag \
+  --yaml /home/ww/config/minimal_semantic_robot.yaml
+```
 
-## Notes
+## 运行前提
 
-- The workbench uses `rerun-sdk==0.31.3` and `@rerun-io/web-viewer==0.31.3` so the Web Viewer exposes `selection_change` events.
-- The Rerun workbench requires Python 3.10+ because the newer Rerun SDK and web viewer are needed for bidirectional selection. This is separate from the legacy ROS Noetic-era script.
-- The installed command alias is `projection-rerun`; the Python package includes the built frontend assets from `rerun_projection/web_dist`.
-- The legacy Open3D/OpenCV script can still be run directly with `python Projection.py --bag /path/to/input.bag`.
+- 可用的 ROS 环境
+- 能访问的 `rosbag`
+- 正确的 YAML 配置
