@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dataset"
+version = "0.1.0"
+description = "ROS图像数据采集工具"
+requires-python = ">=3.8"
+dependencies = [
+  "opencv-python",
+  "numpy",
+]
+
+[project.scripts]
+dataset = "dataset:main"
+
+[tool.setuptools]
+py-modules = ["dataset"]

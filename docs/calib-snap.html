@@ -170,11 +170,11 @@
     </div>
     <article class="content">
       <h1>calib-snap</h1>
-      <p>用于标定采集的图像 + 点云配对工具。支持三种输入方式：</p>
+      <p>用于标定采集的图像 + 点云配对工具，也支持不带点云的纯图片采集。支持三种图像输入方式：</p>
       <ul>
-        <li><code>rtsp</code>：从 RTSP 拉流读图像，再和 ROS <code>PointCloud2</code> 配对保存</li>
-        <li><code>camera</code>：从本地摄像头或 <code>/dev/video*</code> 读图像，再和 ROS <code>PointCloud2</code> 配对保存</li>
-        <li><code>dual_ros</code>：图像和点云都直接从 ROS 话题读取</li>
+        <li><code>rtsp</code>：从 RTSP 拉流读图像</li>
+        <li><code>camera</code>：从本地摄像头或 <code>/dev/video*</code> 读图像</li>
+        <li><code>dual_ros</code>：直接从 ROS 图像话题读取</li>
       </ul>
       <p>安装后可直接使用 <code>calib-snap</code> 命令。</p>
       <h2>依赖</h2>
@@ -186,14 +186,50 @@
       </ul>
       <h2>安装</h2>
       <p>建议在已 <code>source</code> ROS 环境后安装 wheel：</p>
-      <pre><code class="language-bash">pip install https://pip.wgists.me/dist/calib-snap/calib_snap-0.1.0-py3-none-any.whl</code></pre>
+      <pre><code class="language-bash">pip install https://pip.wgists.me/dist/calib-snap/calib_snap-0.1.1-py3-none-any.whl</code></pre>
       <p>如果要直接在仓库里用 <code>uv</code> 跑别名命令，建议先建一个可复用系统 ROS 包的环境：</p>
       <pre><code class="language-bash">cd /home/ww/pip-repo/code
 uv venv --python &quot;$(which python3)&quot; --system-site-packages
 source .venv/bin/activate
 source /opt/ros/noetic/setup.bash
 uv pip install .</code></pre>
-      <h2>使用</h2>
+      <h2>纯图片采集</h2>
+      <p>不指定 <code>--pointcloud-topic</code> 时，默认进入纯图片采集模式。</p>
+      <p>ROS 图像话题自动隔帧保存：</p>
+      <pre><code class="language-bash">calib-snap \
+  --input-mode dual_ros \
+  --source-image-topic /camera/image_raw \
+  --save-dir ./images \
+  --image-save-mode interval \
+  --image-interval 10 \
+  --prefix img \
+  --image-ext jpg</code></pre>
+      <p>ROS 图像话题只手动保存：</p>
+      <pre><code class="language-bash">calib-snap \
+  --input-mode dual_ros \
+  --source-image-topic /camera/image_raw \
+  --save-dir ./images \
+  --image-save-mode manual \
+  --prefix img \
+  --image-ext jpg</code></pre>
+      <p>RTSP 视频流只手动保存：</p>
+      <pre><code class="language-bash">calib-snap \
+  --input-mode rtsp \
+  --rtsp-uri rtsp://127.0.0.1:8554/test \
+  --save-dir ./images \
+  --image-save-mode manual \
+  --prefix rtsp \
+  --image-ext jpg</code></pre>
+      <p>本地摄像头自动保存并允许手动补拍：</p>
+      <pre><code class="language-bash">calib-snap \
+  --input-mode camera \
+  --camera-source 0 \
+  --save-dir ./images \
+  --image-save-mode both \
+  --image-interval 5 \
+  --prefix usb \
+  --image-ext png</code></pre>
+      <h2>图像 + 点云配对采集</h2>
       <p>RTSP 模式：</p>
       <pre><code class="language-bash">calib-snap \
   --input-mode rtsp \
@@ -216,15 +252,17 @@ uv pip install .</code></pre>
   --pointcloud-topic /livox/lidar</code></pre>
       <h2>热键</h2>
       <ul>
-        <li><code>s</code>：保存当前图像和最近一帧点云</li>
+        <li><code>s</code>：配对模式下保存当前图像和最近一帧点云；纯图片 <code>manual</code> 或 <code>both</code> 模式下保存当前图像</li>
         <li><code>q</code>：退出</li>
       </ul>
       <h2>输出</h2>
-      <p>默认输出目录为当前目录下的 <code>data/</code>：</p>
+      <p>配对模式默认输出目录为当前目录下的 <code>data/</code>：</p>
       <ul>
         <li><code>images/</code>：采集图片</li>
         <li><code>pointclouds/</code>：对应点云 PCD</li>
       </ul>
+      <p>纯图片模式使用 <code>--save-dir</code> 指定保存目录，文件名格式为：</p>
+      <pre><code class="language-text">&lt;prefix&gt;_YYYYmmdd_HHMMSS_micro.&lt;image-ext&gt;</code></pre>
       <p>在 <code>rtsp</code> 和 <code>camera</code> 模式下，图像还会额外发布到：</p>
       <ul>
         <li><code>/calib/image_raw</code></li>
@@ -232,11 +270,27 @@ uv pip install .</code></pre>
       </ul>
       <h2>常用参数</h2>
       <ul>
-        <li><code>--output-dir</code>：输出目录</li>
+        <li><code>--capture-mode</code>：采集模式，支持 <code>auto/paired/image</code>，默认 <code>auto</code></li>
+        <li><code>--output-dir</code>：配对模式输出目录</li>
+        <li><code>--save-dir</code>：纯图片模式保存目录</li>
         <li><code>--image-ext</code>：图片格式，支持 <code>png/jpg/jpeg</code>，默认 <code>png</code></li>
+        <li><code>--image-save-mode</code>：纯图片保存触发方式，支持 <code>interval/manual/both</code>，默认 <code>interval</code></li>
+        <li><code>--image-interval</code>：纯图片自动保存间隔帧数，默认 <code>10</code></li>
+        <li><code>--prefix</code>：纯图片文件名前缀，默认 <code>img</code></li>
+        <li><code>--image-quality</code>：纯图片保存质量，默认 <code>95</code></li>
         <li><code>--pcd-fields</code>：保存到 PCD 的字段列表，默认 <code>x,y,z,intensity</code></li>
         <li><code>--max-pointcloud-age</code>：允许配对的最大点云时延，默认 <code>0.5</code></li>
         <li><code>--fps</code>：RTSP/Camera 采集和发布频率</li>
+      </ul>
+      <h2>版本新增内容</h2>
+      <h3>0.1.1</h3>
+      <ul>
+        <li>新增纯图片采集模式。不指定 <code>--pointcloud-topic</code> 时，<code>--capture-mode auto</code> 默认只保存图片。</li>
+        <li>新增 <code>--capture-mode auto|paired|image</code>，将采集行为和图像来源分开。</li>
+        <li>新增 <code>--image-save-mode interval|manual|both</code>，支持自动隔帧保存、只手动保存、自动加手动保存。</li>
+        <li>新增纯图片参数：<code>--save-dir</code>、<code>--image-interval</code>、<code>--prefix</code>、<code>--image-quality</code>。</li>
+        <li><code>rtsp</code> 和 <code>camera</code> 纯图片模式继续发布 <code>/calib/image_raw</code> 和 <code>/calib/image_raw/compressed</code>。</li>
+        <li>保留原有图像 + 点云配对采集行为。</li>
       </ul>
     </article>
   </main>

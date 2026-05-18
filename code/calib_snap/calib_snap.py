@@ -18,6 +18,7 @@ import threading
 import time
 import termios
 import tty
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
@@ -76,6 +77,16 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--capture-mode",
+        choices=["auto", "paired", "image"],
+        default="auto",
+        help=(
+            "Capture behavior. 'auto' captures image+pointcloud when "
+            "--pointcloud-topic is set, otherwise image-only. 'paired' requires "
+            "--pointcloud-topic. 'image' saves images only."
+        ),
+    )
+    parser.add_argument(
         "--rtsp-uri",
         help="RTSP input URI used in rtsp mode, for example rtsp://127.0.0.1:8554/test",
     )
@@ -93,7 +104,6 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--pointcloud-topic",
-        required=True,
         help="PointCloud2 topic to capture.",
     )
     parser.add_argument(
@@ -119,10 +129,41 @@ def parse_args() -> argparse.Namespace:
         help="Output root directory. Defaults to ./data.",
     )
     parser.add_argument(
+        "--save-dir",
+        default="./images",
+        help="Image-only output directory. Used only when capture mode is image.",
+    )
+    parser.add_argument(
         "--image-ext",
         default="png",
         choices=["png", "jpg", "jpeg"],
         help="Image file extension. Defaults to png.",
+    )
+    parser.add_argument(
+        "--image-save-mode",
+        choices=["interval", "manual", "both"],
+        default="interval",
+        help=(
+            "Image-only save trigger. 'interval' saves every --image-interval "
+            "frames, 'manual' saves only on --save-key, and 'both' enables both."
+        ),
+    )
+    parser.add_argument(
+        "--image-interval",
+        type=int,
+        default=10,
+        help="Image-only automatic save interval in frames. Defaults to 10.",
+    )
+    parser.add_argument(
+        "--prefix",
+        default="img",
+        help="Image-only filename prefix. Defaults to img.",
+    )
+    parser.add_argument(
+        "--image-quality",
+        type=int,
+        default=95,
+        help="Image-only save quality from 1 to 100. Defaults to 95.",
     )
     parser.add_argument(
         "--pcd-fields",
@@ -164,7 +205,23 @@ def parse_args() -> argparse.Namespace:
         parser.error("--camera-source must not be empty when --input-mode=camera.")
     if args.input_mode == "dual_ros" and not args.source_image_topic:
         parser.error("--source-image-topic is required when --input-mode=dual_ros.")
+    args.resolved_capture_mode = resolve_capture_mode(args, parser)
     return args
+
+
+def resolve_capture_mode(args: argparse.Namespace, parser=None) -> str:
+    mode = args.capture_mode
+    pointcloud_topic = getattr(args, "pointcloud_topic", None)
+    if mode == "auto":
+        return "paired" if pointcloud_topic else "image"
+    if mode == "paired" and not pointcloud_topic:
+        message = "--pointcloud-topic is required when --capture-mode=paired."
+        if parser is not None:
+            parser.error(message)
+        raise ValueError(message)
+    if mode == "image":
+        return "image"
+    return "paired"
 
 
 def normalize_extension(ext: str) -> str:
@@ -172,6 +229,39 @@ def normalize_extension(ext: str) -> str:
     if ext == "jpeg":
         return "jpg"
     return ext
+
+
+class ImageFileWriter:
+    def __init__(
+        self,
+        save_dir: Path,
+        image_ext: str,
+        prefix: str,
+        quality: int,
+    ) -> None:
+        self.save_dir = Path(save_dir).expanduser().resolve()
+        self.image_ext = normalize_extension(image_ext)
+        self.prefix = prefix
+        self.quality = min(100, max(1, quality))
+        self.saved_count = 0
+        self.save_dir.mkdir(parents=True, exist_ok=True)
+
+    def _write_params(self) -> List[int]:
+        if self.image_ext in {"jpg", "jpeg"}:
+            return [cv2.IMWRITE_JPEG_QUALITY, self.quality]
+        if self.image_ext == "png":
+            compression = 9 - int(self.quality / 11)
+            compression = min(9, max(0, compression))
+            return [cv2.IMWRITE_PNG_COMPRESSION, compression]
+        return []
+
+    def save(self, frame) -> Path:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        path = self.save_dir / f"{self.prefix}_{timestamp}.{self.image_ext}"
+        if not cv2.imwrite(str(path), frame, self._write_params()):
+            raise RuntimeError(f"Failed to save image to {path}")
+        self.saved_count += 1
+        return path
 
 
 def sanitize_fields(raw_fields: str) -> List[str]:
@@ -352,7 +442,8 @@ class CalibrationCaptureNode:
     def __init__(
         self,
         input_mode: str,
-        pointcloud_topic: str,
+        capture_mode: str,
+        pointcloud_topic: Optional[str],
         source_image_topic: Optional[str],
         image_topic: str,
         compressed_topic: str,
@@ -361,28 +452,46 @@ class CalibrationCaptureNode:
         image_ext: str,
         requested_pcd_fields: Sequence[str],
         max_pointcloud_age: float,
+        image_writer: Optional[ImageFileWriter] = None,
+        image_save_mode: str = "interval",
+        image_interval: int = 10,
     ) -> None:
         self._input_mode = input_mode
+        self._capture_mode = capture_mode
         self._frame_id = frame_id
         self._source_image_topic = source_image_topic or ""
         self._image_ext = image_ext
         self._requested_pcd_fields = requested_pcd_fields
         self._max_pointcloud_age = max_pointcloud_age
+        self._image_writer = image_writer
+        self._image_save_mode = image_save_mode
+        self._image_interval = max(1, image_interval)
         self._bridge = CvBridge() if CvBridge is not None else None
         self._lock = threading.Lock()
         self._latest_pointcloud = None
         self._latest_frame = None
         self._latest_image_stamp = rospy.Time()
         self._capture_index = 0
+        self._source_frame_count = 0
 
         self._image_dir = output_dir / "images"
         self._pointcloud_dir = output_dir / "pointclouds"
-        self._image_dir.mkdir(parents=True, exist_ok=True)
-        self._pointcloud_dir.mkdir(parents=True, exist_ok=True)
+        if self._capture_mode == "paired":
+            self._image_dir.mkdir(parents=True, exist_ok=True)
+            self._pointcloud_dir.mkdir(parents=True, exist_ok=True)
+        elif self._image_writer is None:
+            self._image_writer = ImageFileWriter(
+                save_dir=output_dir,
+                image_ext=image_ext,
+                prefix="img",
+                quality=95,
+            )
 
-        self._pointcloud_sub = rospy.Subscriber(
-            pointcloud_topic, PointCloud2, self._on_pointcloud, queue_size=5
-        )
+        self._pointcloud_sub = None
+        if self._capture_mode == "paired":
+            self._pointcloud_sub = rospy.Subscriber(
+                pointcloud_topic, PointCloud2, self._on_pointcloud, queue_size=5
+            )
         self._image_sub = None
         self._image_pub = None
         self._compressed_pub = None
@@ -420,15 +529,11 @@ class CalibrationCaptureNode:
             )
             return
 
-        with self._lock:
-            self._latest_frame = frame
-            self._latest_image_stamp = msg.header.stamp
+        self.process_image_frame(frame, msg.header.stamp)
 
     def publish_image(self, frame) -> None:
         stamp = rospy.Time.now()
-        with self._lock:
-            self._latest_frame = frame
-            self._latest_image_stamp = stamp
+        self.process_image_frame(frame, stamp)
 
         if self._image_pub is None:
             return
@@ -483,11 +588,70 @@ class CalibrationCaptureNode:
         return f"pointcloud age: {age:.3f}s"
 
     def capture_status(self) -> str:
+        if self._capture_mode == "image":
+            return self.image_status()
         return f"{self.image_status()}, {self.pointcloud_status()}"
+
+    def process_image_frame(self, frame, stamp=None) -> None:
+        if stamp is None:
+            stamp = rospy.Time.now()
+        with self._lock:
+            self._latest_frame = frame
+            self._latest_image_stamp = stamp
+
+        if self._capture_mode != "image":
+            return
+
+        self._source_frame_count += 1
+        if self._image_save_mode not in {"interval", "both"}:
+            return
+        if self._source_frame_count % self._image_interval != 0:
+            return
+        self._save_image_frame(frame)
+
+    def _save_image_frame(self, frame) -> bool:
+        if self._image_writer is None:
+            rospy.logerr("Image-only writer is not configured; image skipped.")
+            return False
+        try:
+            image_path = self._image_writer.save(frame)
+        except Exception as exc:
+            rospy.logerr("Failed to save image: %s", exc)
+            return False
+        rospy.loginfo(
+            "Saved image %06d: image=%s",
+            self._image_writer.saved_count,
+            image_path,
+        )
+        return True
+
+    def save_image_capture(self) -> None:
+        with self._lock:
+            frame = None if self._latest_frame is None else self._copy_frame(self._latest_frame)
+
+        if frame is None:
+            rospy.logwarn("No image frame received yet; image save skipped.")
+            return
+        self._save_image_frame(frame)
+
+    def handle_save_key(self) -> None:
+        if self._capture_mode == "paired":
+            self.save_capture()
+            return
+        if self._image_save_mode in {"manual", "both"}:
+            self.save_image_capture()
+            return
+        rospy.logwarn(
+            "Save key ignored because --image-save-mode=%s only saves by interval.",
+            self._image_save_mode,
+        )
+
+    def _copy_frame(self, frame):
+        return frame.copy() if hasattr(frame, "copy") else frame
 
     def save_capture(self) -> None:
         with self._lock:
-            frame = None if self._latest_frame is None else self._latest_frame.copy()
+            frame = None if self._latest_frame is None else self._copy_frame(self._latest_frame)
             pointcloud_msg = self._latest_pointcloud
 
         if frame is None:
@@ -568,7 +732,7 @@ def run_stream_capture(
 
                 key = key_reader.poll()
                 if key in (save_key, save_key.upper()):
-                    node.save_capture()
+                    node.handle_save_key()
                 elif key in (quit_key, quit_key.upper(), "\x1b"):
                     break
 
@@ -580,12 +744,26 @@ def run_stream_capture(
 def main() -> None:
     args = parse_args()
     image_ext = normalize_extension(args.image_ext)
-    requested_fields = sanitize_fields(args.pcd_fields)
+    capture_mode = args.resolved_capture_mode
+    requested_fields = sanitize_fields(args.pcd_fields) if capture_mode == "paired" else []
 
     rospy.init_node("calib_snap")
     output_dir = Path(args.output_dir).expanduser().resolve()
+    image_writer = None
+    if capture_mode == "image":
+        image_writer = ImageFileWriter(
+            save_dir=Path(args.save_dir),
+            image_ext=image_ext,
+            prefix=args.prefix,
+            quality=args.image_quality,
+        )
+        if args.image_save_mode == "manual":
+            rospy.loginfo(
+                "Image-only manual mode enabled; --image-interval is ignored."
+            )
     node = CalibrationCaptureNode(
         input_mode=args.input_mode,
+        capture_mode=capture_mode,
         pointcloud_topic=args.pointcloud_topic,
         source_image_topic=args.source_image_topic,
         image_topic=args.image_topic,
@@ -595,16 +773,33 @@ def main() -> None:
         image_ext=image_ext,
         requested_pcd_fields=requested_fields,
         max_pointcloud_age=args.max_pointcloud_age,
+        image_writer=image_writer,
+        image_save_mode=args.image_save_mode,
+        image_interval=args.image_interval,
     )
 
     rate = rospy.Rate(max(args.fps, 1.0))
     save_key = args.save_key[:1]
     quit_key = args.quit_key[:1]
-    rospy.loginfo(
-        "Terminal hotkeys enabled: [%s] save current image + latest pointcloud, [%s] quit",
-        save_key,
-        quit_key,
-    )
+    if capture_mode == "paired":
+        rospy.loginfo(
+            "Terminal hotkeys enabled: [%s] save current image + latest pointcloud, [%s] quit",
+            save_key,
+            quit_key,
+        )
+    else:
+        rospy.loginfo(
+            "Image-only mode=%s, save_dir=%s, prefix=%s, interval=%d",
+            args.image_save_mode,
+            image_writer.save_dir if image_writer is not None else "",
+            args.prefix,
+            max(1, args.image_interval),
+        )
+        rospy.loginfo(
+            "Terminal hotkeys enabled: [%s] save current image when manual/both mode allows it, [%s] quit",
+            save_key,
+            quit_key,
+        )
 
     if args.input_mode in {"rtsp", "camera"}:
         source_label = ""
@@ -615,7 +810,8 @@ def main() -> None:
             capture_source = args.rtsp_uri
             open_failure_target = args.rtsp_uri
             rospy.loginfo(
-                "Capture mode=rtsp, rtsp_uri=%s, pointcloud_topic=%s, image_topic=%s, compressed_topic=%s",
+                "Capture mode=%s, input=rtsp, rtsp_uri=%s, pointcloud_topic=%s, image_topic=%s, compressed_topic=%s",
+                capture_mode,
                 args.rtsp_uri,
                 args.pointcloud_topic,
                 args.image_topic,
@@ -626,7 +822,8 @@ def main() -> None:
             source_label = f"camera source {args.camera_source}"
             open_failure_target = str(args.camera_source)
             rospy.loginfo(
-                "Capture mode=camera, camera_source=%s, pointcloud_topic=%s, image_topic=%s, compressed_topic=%s",
+                "Capture mode=%s, input=camera, camera_source=%s, pointcloud_topic=%s, image_topic=%s, compressed_topic=%s",
+                capture_mode,
                 args.camera_source,
                 args.pointcloud_topic,
                 args.image_topic,
@@ -653,7 +850,8 @@ def main() -> None:
         return
 
     rospy.loginfo(
-        "Capture mode=dual_ros, source_image_topic=%s, pointcloud_topic=%s",
+        "Capture mode=%s, input=dual_ros, source_image_topic=%s, pointcloud_topic=%s",
+        capture_mode,
         args.source_image_topic,
         args.pointcloud_topic,
     )
@@ -667,7 +865,7 @@ def main() -> None:
 
             key = key_reader.poll()
             if key in (save_key, save_key.upper()):
-                node.save_capture()
+                node.handle_save_key()
             elif key in (quit_key, quit_key.upper(), "\x1b"):
                 break
 
