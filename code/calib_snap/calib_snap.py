@@ -109,6 +109,19 @@ def parse_args() -> argparse.Namespace:
         help="Requested camera capture height in pixels. Used only in camera mode.",
     )
     parser.add_argument(
+        "--camera-mjpg",
+        action="store_true",
+        help="Request MJPG camera capture format. Used only in camera mode.",
+    )
+    parser.add_argument(
+        "--camera-fps",
+        type=float,
+        help=(
+            "Requested camera hardware capture FPS. Used only in camera mode. "
+            "This is separate from --fps, which controls the read/publish loop."
+        ),
+    )
+    parser.add_argument(
         "--source-image-topic",
         help="ROS image topic used in dual_ros mode.",
     )
@@ -217,14 +230,17 @@ def parse_args() -> argparse.Namespace:
         parser.error("--source-image-topic is required when --input-mode=dual_ros.")
     has_camera_width = args.camera_width is not None
     has_camera_height = args.camera_height is not None
+    has_camera_fps = args.camera_fps is not None
     if has_camera_width != has_camera_height:
         parser.error("--camera-width and --camera-height must be provided together.")
-    if args.input_mode != "camera" and (has_camera_width or has_camera_height):
-        parser.error(
-            "--camera-width/--camera-height are only supported when --input-mode=camera."
-        )
+    if args.input_mode != "camera" and (
+        has_camera_width or has_camera_height or args.camera_mjpg or has_camera_fps
+    ):
+        parser.error("camera capture options are only supported when --input-mode=camera.")
     if has_camera_width and (args.camera_width <= 0 or args.camera_height <= 0):
         parser.error("--camera-width and --camera-height must be positive integers.")
+    if has_camera_fps and args.camera_fps <= 0:
+        parser.error("--camera-fps must be positive.")
     args.resolved_capture_mode = resolve_capture_mode(args, parser)
     return args
 
@@ -303,23 +319,40 @@ def configure_camera_capture_size(cap: cv2.VideoCapture, args: argparse.Namespac
         return
     width = getattr(args, "camera_width", None)
     height = getattr(args, "camera_height", None)
-    if width is None and height is None:
+    camera_mjpg = bool(getattr(args, "camera_mjpg", False))
+    camera_fps = getattr(args, "camera_fps", None)
+    if width is None and height is None and not camera_mjpg and camera_fps is None:
         return
 
-    width_ok = cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-    height_ok = cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-    if not width_ok or not height_ok:
+    failed_options = []
+    if camera_mjpg:
+        fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+        if not cap.set(cv2.CAP_PROP_FOURCC, fourcc):
+            failed_options.append("mjpg")
+
+    if width is not None and height is not None:
+        if not cap.set(cv2.CAP_PROP_FRAME_WIDTH, width):
+            failed_options.append("width")
+        if not cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height):
+            failed_options.append("height")
+
+    if camera_fps is not None and not cap.set(cv2.CAP_PROP_FPS, camera_fps):
+        failed_options.append("fps")
+
+    if failed_options:
         rospy.logwarn(
-            "Camera capture size request may not be supported: width=%s height=%s",
-            width,
-            height,
+            "Camera capture option request may not be supported: %s",
+            ",".join(failed_options),
         )
-    else:
-        rospy.loginfo(
-            "Requested camera capture size: width=%s height=%s",
-            width,
-            height,
-        )
+        return
+
+    rospy.loginfo(
+        "Requested camera capture options: mjpg=%s width=%s height=%s camera_fps=%s",
+        camera_mjpg,
+        width,
+        height,
+        camera_fps,
+    )
 
 
 def pointfield_map(msg: PointCloud2) -> dict:

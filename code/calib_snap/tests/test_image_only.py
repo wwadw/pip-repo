@@ -88,12 +88,15 @@ def build_stub_modules():
     cv2 = types.ModuleType("cv2")
     cv2.IMWRITE_JPEG_QUALITY = 1
     cv2.IMWRITE_PNG_COMPRESSION = 16
+    cv2.CAP_PROP_FOURCC = 2
     cv2.CAP_PROP_FRAME_WIDTH = 3
     cv2.CAP_PROP_FRAME_HEIGHT = 4
+    cv2.CAP_PROP_FPS = 5
     cv2.COLOR_GRAY2BGR = 100
     cv2.COLOR_RGB2BGR = 101
     cv2.COLOR_BGRA2BGR = 102
     cv2.COLOR_RGBA2BGR = 103
+    cv2.VideoWriter_fourcc = lambda *chars: "".join(chars)
     cv2.cvtColor = lambda frame, code: frame
     cv2.imencode = lambda ext, frame: (True, SimpleNamespace(tobytes=lambda: b"jpg"))
     cv2.VideoCapture = lambda source: SimpleNamespace(isOpened=lambda: False)
@@ -186,6 +189,24 @@ class ImageOnlyCaptureTests(unittest.TestCase):
         self.assertEqual(args.camera_width, 1280)
         self.assertEqual(args.camera_height, 720)
 
+    def test_camera_mjpg_and_fps_options_parse(self):
+        argv = [
+            "calib_snap",
+            "--input-mode",
+            "camera",
+            "--camera-source",
+            "0",
+            "--camera-mjpg",
+            "--camera-fps",
+            "30",
+        ]
+
+        with mock.patch.object(sys, "argv", argv):
+            args = self.calib_snap.parse_args()
+
+        self.assertTrue(args.camera_mjpg)
+        self.assertEqual(args.camera_fps, 30.0)
+
     def test_camera_size_options_must_be_provided_together(self):
         argv = [
             "calib_snap",
@@ -208,7 +229,7 @@ class ImageOnlyCaptureTests(unittest.TestCase):
             stderr.getvalue(),
         )
 
-    def test_camera_size_options_are_only_supported_in_camera_mode(self):
+    def test_camera_options_are_only_supported_in_camera_mode(self):
         argv = [
             "calib_snap",
             "--input-mode",
@@ -219,6 +240,9 @@ class ImageOnlyCaptureTests(unittest.TestCase):
             "1280",
             "--camera-height",
             "720",
+            "--camera-mjpg",
+            "--camera-fps",
+            "30",
         ]
 
         with mock.patch.object(sys, "argv", argv), mock.patch(
@@ -228,9 +252,28 @@ class ImageOnlyCaptureTests(unittest.TestCase):
                 self.calib_snap.parse_args()
 
         self.assertIn(
-            "--camera-width/--camera-height are only supported when --input-mode=camera",
+            "camera capture options are only supported when --input-mode=camera",
             stderr.getvalue(),
         )
+
+    def test_camera_fps_must_be_positive(self):
+        argv = [
+            "calib_snap",
+            "--input-mode",
+            "camera",
+            "--camera-source",
+            "0",
+            "--camera-fps",
+            "0",
+        ]
+
+        with mock.patch.object(sys, "argv", argv), mock.patch(
+            "sys.stderr", new_callable=io.StringIO
+        ) as stderr:
+            with self.assertRaises(SystemExit):
+                self.calib_snap.parse_args()
+
+        self.assertIn("--camera-fps must be positive", stderr.getvalue())
 
     def test_camera_capture_size_is_applied_to_video_capture(self):
         calls = []
@@ -244,6 +287,8 @@ class ImageOnlyCaptureTests(unittest.TestCase):
             input_mode="camera",
             camera_width=1280,
             camera_height=720,
+            camera_mjpg=False,
+            camera_fps=None,
         )
 
         self.calib_snap.configure_camera_capture_size(FakeCapture(), args)
@@ -253,6 +298,34 @@ class ImageOnlyCaptureTests(unittest.TestCase):
             [
                 (self.calib_snap.cv2.CAP_PROP_FRAME_WIDTH, 1280),
                 (self.calib_snap.cv2.CAP_PROP_FRAME_HEIGHT, 720),
+            ],
+        )
+
+    def test_camera_capture_mjpg_size_and_fps_are_applied_in_order(self):
+        calls = []
+
+        class FakeCapture:
+            def set(self, prop, value):
+                calls.append((prop, value))
+                return True
+
+        args = SimpleNamespace(
+            input_mode="camera",
+            camera_width=1920,
+            camera_height=1080,
+            camera_mjpg=True,
+            camera_fps=30.0,
+        )
+
+        self.calib_snap.configure_camera_capture_size(FakeCapture(), args)
+
+        self.assertEqual(
+            calls,
+            [
+                (self.calib_snap.cv2.CAP_PROP_FOURCC, "MJPG"),
+                (self.calib_snap.cv2.CAP_PROP_FRAME_WIDTH, 1920),
+                (self.calib_snap.cv2.CAP_PROP_FRAME_HEIGHT, 1080),
+                (self.calib_snap.cv2.CAP_PROP_FPS, 30.0),
             ],
         )
 

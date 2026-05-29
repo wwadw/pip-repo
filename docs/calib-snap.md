@@ -20,7 +20,7 @@
 建议在已 `source` ROS 环境后安装 wheel：
 
 ```bash
-pip install https://pip.wgists.me/dist/calib-snap/calib_snap-0.1.2-py3-none-any.whl
+pip install https://pip.wgists.me/dist/calib-snap/calib_snap-0.1.3-py3-none-any.whl
 ```
 
 如果要直接在仓库里用 `uv` 跑别名命令，建议先建一个可复用系统 ROS 包的环境：
@@ -80,8 +80,10 @@ calib-snap \
 calib-snap \
   --input-mode camera \
   --camera-source 0 \
+  --camera-mjpg \
   --camera-width 1280 \
   --camera-height 720 \
+  --camera-fps 30 \
   --save-dir ./images \
   --image-save-mode both \
   --image-interval 5 \
@@ -106,8 +108,10 @@ calib-snap \
 calib-snap \
   --input-mode camera \
   --camera-source 0 \
+  --camera-mjpg \
   --camera-width 1280 \
   --camera-height 720 \
+  --camera-fps 30 \
   --pointcloud-topic /livox/lidar
 ```
 
@@ -156,6 +160,8 @@ calib-snap \
 
 - `--capture-mode`：采集模式，支持 `auto/paired/image`，默认 `auto`
 - `--camera-width` / `--camera-height`：本地摄像头采集分辨率，只在 `--input-mode camera` 时支持，必须成对设置
+- `--camera-mjpg`：请求本地摄像头使用 MJPG 采集格式，只在 `--input-mode camera` 时支持
+- `--camera-fps`：请求本地摄像头硬件采集帧率，只在 `--input-mode camera` 时支持，和控制程序循环频率的 `--fps` 不同
 - `--output-dir`：配对模式输出目录
 - `--save-dir`：纯图片模式保存目录
 - `--image-ext`：图片格式，支持 `png/jpg/jpeg`，默认 `png`
@@ -168,6 +174,12 @@ calib-snap \
 - `--fps`：RTSP/Camera 采集和发布频率
 
 ## 版本新增内容
+
+### 0.1.3
+
+- 新增本地摄像头采集格式参数：`--camera-mjpg`，对应 `cv2.CAP_PROP_FOURCC = MJPG`。
+- 新增本地摄像头硬件采集帧率参数：`--camera-fps`，对应 `cv2.CAP_PROP_FPS`。
+- 摄像头采集配置按 MJPG、宽度、高度、FPS 的顺序写入 OpenCV `VideoCapture`。
 
 ### 0.1.2
 

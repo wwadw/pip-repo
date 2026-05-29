@@ -186,7 +186,7 @@
       </ul>
       <h2>安装</h2>
       <p>建议在已 <code>source</code> ROS 环境后安装 wheel：</p>
-      <pre><code class="language-bash">pip install https://pip.wgists.me/dist/calib-snap/calib_snap-0.1.2-py3-none-any.whl</code></pre>
+      <pre><code class="language-bash">pip install https://pip.wgists.me/dist/calib-snap/calib_snap-0.1.3-py3-none-any.whl</code></pre>
       <p>如果要直接在仓库里用 <code>uv</code> 跑别名命令，建议先建一个可复用系统 ROS 包的环境：</p>
       <pre><code class="language-bash">cd /home/ww/pip-repo/code
 uv venv --python &quot;$(which python3)&quot; --system-site-packages
@@ -224,8 +224,10 @@ uv pip install .</code></pre>
       <pre><code class="language-bash">calib-snap \
   --input-mode camera \
   --camera-source 0 \
+  --camera-mjpg \
   --camera-width 1280 \
   --camera-height 720 \
+  --camera-fps 30 \
   --save-dir ./images \
   --image-save-mode both \
   --image-interval 5 \
@@ -241,8 +243,10 @@ uv pip install .</code></pre>
       <pre><code class="language-bash">calib-snap \
   --input-mode camera \
   --camera-source 0 \
+  --camera-mjpg \
   --camera-width 1280 \
   --camera-height 720 \
+  --camera-fps 30 \
   --pointcloud-topic /livox/lidar</code></pre>
       <p>也可以直接传设备路径：</p>
       <pre><code class="language-bash">calib-snap \
@@ -276,6 +280,8 @@ uv pip install .</code></pre>
       <ul>
         <li><code>--capture-mode</code>：采集模式，支持 <code>auto/paired/image</code>，默认 <code>auto</code></li>
         <li><code>--camera-width</code> / <code>--camera-height</code>：本地摄像头采集分辨率，只在 <code>--input-mode camera</code> 时支持，必须成对设置</li>
+        <li><code>--camera-mjpg</code>：请求本地摄像头使用 MJPG 采集格式，只在 <code>--input-mode camera</code> 时支持</li>
+        <li><code>--camera-fps</code>：请求本地摄像头硬件采集帧率，只在 <code>--input-mode camera</code> 时支持，和控制程序循环频率的 <code>--fps</code> 不同</li>
         <li><code>--output-dir</code>：配对模式输出目录</li>
         <li><code>--save-dir</code>：纯图片模式保存目录</li>
         <li><code>--image-ext</code>：图片格式，支持 <code>png/jpg/jpeg</code>，默认 <code>png</code></li>
@@ -288,6 +294,12 @@ uv pip install .</code></pre>
         <li><code>--fps</code>：RTSP/Camera 采集和发布频率</li>
       </ul>
       <h2>版本新增内容</h2>
+      <h3>0.1.3</h3>
+      <ul>
+        <li>新增本地摄像头采集格式参数：<code>--camera-mjpg</code>，对应 <code>cv2.CAP_PROP_FOURCC = MJPG</code>。</li>
+        <li>新增本地摄像头硬件采集帧率参数：<code>--camera-fps</code>，对应 <code>cv2.CAP_PROP_FPS</code>。</li>
+        <li>摄像头采集配置按 MJPG、宽度、高度、FPS 的顺序写入 OpenCV <code>VideoCapture</code>。</li>
+      </ul>
       <h3>0.1.2</h3>
       <ul>
         <li>新增本地摄像头采集尺寸参数：<code>--camera-width</code>、<code>--camera-height</code>。</li>
