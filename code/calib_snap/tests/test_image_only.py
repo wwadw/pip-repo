@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import sys
 import tempfile
 import types
@@ -87,6 +88,8 @@ def build_stub_modules():
     cv2 = types.ModuleType("cv2")
     cv2.IMWRITE_JPEG_QUALITY = 1
     cv2.IMWRITE_PNG_COMPRESSION = 16
+    cv2.CAP_PROP_FRAME_WIDTH = 3
+    cv2.CAP_PROP_FRAME_HEIGHT = 4
     cv2.COLOR_GRAY2BGR = 100
     cv2.COLOR_RGB2BGR = 101
     cv2.COLOR_BGRA2BGR = 102
@@ -163,6 +166,95 @@ class ImageOnlyCaptureTests(unittest.TestCase):
         args = SimpleNamespace(capture_mode="image", pointcloud_topic="/livox/lidar")
 
         self.assertEqual(self.calib_snap.resolve_capture_mode(args), "image")
+
+    def test_camera_size_options_parse_as_width_and_height(self):
+        argv = [
+            "calib_snap",
+            "--input-mode",
+            "camera",
+            "--camera-source",
+            "0",
+            "--camera-width",
+            "1280",
+            "--camera-height",
+            "720",
+        ]
+
+        with mock.patch.object(sys, "argv", argv):
+            args = self.calib_snap.parse_args()
+
+        self.assertEqual(args.camera_width, 1280)
+        self.assertEqual(args.camera_height, 720)
+
+    def test_camera_size_options_must_be_provided_together(self):
+        argv = [
+            "calib_snap",
+            "--input-mode",
+            "camera",
+            "--camera-source",
+            "0",
+            "--camera-width",
+            "1280",
+        ]
+
+        with mock.patch.object(sys, "argv", argv), mock.patch(
+            "sys.stderr", new_callable=io.StringIO
+        ) as stderr:
+            with self.assertRaises(SystemExit):
+                self.calib_snap.parse_args()
+
+        self.assertIn(
+            "--camera-width and --camera-height must be provided together",
+            stderr.getvalue(),
+        )
+
+    def test_camera_size_options_are_only_supported_in_camera_mode(self):
+        argv = [
+            "calib_snap",
+            "--input-mode",
+            "rtsp",
+            "--rtsp-uri",
+            "rtsp://127.0.0.1:8554/test",
+            "--camera-width",
+            "1280",
+            "--camera-height",
+            "720",
+        ]
+
+        with mock.patch.object(sys, "argv", argv), mock.patch(
+            "sys.stderr", new_callable=io.StringIO
+        ) as stderr:
+            with self.assertRaises(SystemExit):
+                self.calib_snap.parse_args()
+
+        self.assertIn(
+            "--camera-width/--camera-height are only supported when --input-mode=camera",
+            stderr.getvalue(),
+        )
+
+    def test_camera_capture_size_is_applied_to_video_capture(self):
+        calls = []
+
+        class FakeCapture:
+            def set(self, prop, value):
+                calls.append((prop, value))
+                return True
+
+        args = SimpleNamespace(
+            input_mode="camera",
+            camera_width=1280,
+            camera_height=720,
+        )
+
+        self.calib_snap.configure_camera_capture_size(FakeCapture(), args)
+
+        self.assertEqual(
+            calls,
+            [
+                (self.calib_snap.cv2.CAP_PROP_FRAME_WIDTH, 1280),
+                (self.calib_snap.cv2.CAP_PROP_FRAME_HEIGHT, 720),
+            ],
+        )
 
     def test_image_file_writer_uses_save_dir_prefix_extension_and_quality(self):
         calls = []

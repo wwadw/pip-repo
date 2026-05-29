@@ -99,6 +99,16 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--camera-width",
+        type=int,
+        help="Requested camera capture width in pixels. Used only in camera mode.",
+    )
+    parser.add_argument(
+        "--camera-height",
+        type=int,
+        help="Requested camera capture height in pixels. Used only in camera mode.",
+    )
+    parser.add_argument(
         "--source-image-topic",
         help="ROS image topic used in dual_ros mode.",
     )
@@ -205,6 +215,16 @@ def parse_args() -> argparse.Namespace:
         parser.error("--camera-source must not be empty when --input-mode=camera.")
     if args.input_mode == "dual_ros" and not args.source_image_topic:
         parser.error("--source-image-topic is required when --input-mode=dual_ros.")
+    has_camera_width = args.camera_width is not None
+    has_camera_height = args.camera_height is not None
+    if has_camera_width != has_camera_height:
+        parser.error("--camera-width and --camera-height must be provided together.")
+    if args.input_mode != "camera" and (has_camera_width or has_camera_height):
+        parser.error(
+            "--camera-width/--camera-height are only supported when --input-mode=camera."
+        )
+    if has_camera_width and (args.camera_width <= 0 or args.camera_height <= 0):
+        parser.error("--camera-width and --camera-height must be positive integers.")
     args.resolved_capture_mode = resolve_capture_mode(args, parser)
     return args
 
@@ -276,6 +296,30 @@ def resolve_opencv_source(raw_source: str):
     if stripped.isdigit():
         return int(stripped)
     return stripped
+
+
+def configure_camera_capture_size(cap: cv2.VideoCapture, args: argparse.Namespace) -> None:
+    if getattr(args, "input_mode", None) != "camera":
+        return
+    width = getattr(args, "camera_width", None)
+    height = getattr(args, "camera_height", None)
+    if width is None and height is None:
+        return
+
+    width_ok = cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+    height_ok = cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+    if not width_ok or not height_ok:
+        rospy.logwarn(
+            "Camera capture size request may not be supported: width=%s height=%s",
+            width,
+            height,
+        )
+    else:
+        rospy.loginfo(
+            "Requested camera capture size: width=%s height=%s",
+            width,
+            height,
+        )
 
 
 def pointfield_map(msg: PointCloud2) -> dict:
@@ -838,6 +882,7 @@ def main() -> None:
                 open_failure_target,
             )
             return
+        configure_camera_capture_size(cap, args)
 
         run_stream_capture(
             node=node,

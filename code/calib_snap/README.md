@@ -20,7 +20,7 @@
 建议在已 `source` ROS 环境后安装 wheel：
 
 ```bash
-uv pip install /home/ww/pip-repo/dist/calib-snap/calib_snap-0.1.1-py3-none-any.whl
+uv pip install /home/ww/pip-repo/dist/calib-snap/calib_snap-0.1.2-py3-none-any.whl
 ```
 
 如果要直接在源码目录里用 `uv` 跑别名命令，建议先建一个可复用系统 ROS 包的环境：
@@ -80,6 +80,8 @@ calib-snap \
 calib-snap \
   --input-mode camera \
   --camera-source 0 \
+  --camera-width 1280 \
+  --camera-height 720 \
   --save-dir ./images \
   --image-save-mode both \
   --image-interval 5 \
@@ -104,6 +106,8 @@ calib-snap \
 calib-snap \
   --input-mode camera \
   --camera-source 0 \
+  --camera-width 1280 \
+  --camera-height 720 \
   --pointcloud-topic /livox/lidar
 ```
 
@@ -151,6 +155,7 @@ calib-snap \
 ## 常用参数
 
 - `--capture-mode`：采集模式，支持 `auto/paired/image`，默认 `auto`
+- `--camera-width` / `--camera-height`：本地摄像头采集分辨率，只在 `--input-mode camera` 时支持，必须成对设置
 - `--output-dir`：配对模式输出目录
 - `--save-dir`：纯图片模式保存目录
 - `--image-ext`：图片格式，支持 `png/jpg/jpeg`，默认 `png`
@@ -163,6 +168,12 @@ calib-snap \
 - `--fps`：RTSP/Camera 采集和发布频率
 
 ## 版本新增内容
+
+### 0.1.2
+
+- 新增本地摄像头采集尺寸参数：`--camera-width`、`--camera-height`。
+- 摄像头宽高必须成对设置，只在 `--input-mode camera` 下支持。
+- RTSP 和 ROS 图像话题模式保持原始输入尺寸不变。
 
 ### 0.1.1
 
