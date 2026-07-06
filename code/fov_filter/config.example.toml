@@ -1,0 +1,31 @@
+[player]
+bag = "/home/ww/bags/ren/go7.bag"
+topic = "/mfla/frame_cloud"
+rate = 1.0
+loop = false
+start_paused = false
+paint_rejected = true
+publish_rejected = true
+publish_clock = false
+topic_prefix = "/fov_filter"
+out_topic = "/fov_filter/points_kept"
+rejected_topic = "/fov_filter/points_removed"
+visual_topic = "/fov_filter/points_colored"
+marker_topic = "/fov_filter/fov_regions"
+command_topic = "/fov_filter/command"
+state_topic = "/fov_filter/state"
+node_name = "fov_filter_player"
+
+[[regions]]
+name = "front"
+horizontal = [-45.0, 45.0]
+vertical = [-15.0, 20.0]
+distance = [0.0, 1.6]
+enabled = true
+
+[[regions]]
+name = "left_upper"
+horizontal = [45.0, 110.0]
+vertical = [0.0, 25.0]
+distance = [0.0, 1.0]
+enabled = true

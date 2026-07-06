@@ -1,0 +1,7 @@
+filter_regions:
+- min_horiz_deg: 315.0
+  max_horiz_deg: 45.0
+  min_vert_deg: -15.0
+  max_vert_deg: 15.0
+  min_dist_m: 0.0
+  max_dist_m: 1.0

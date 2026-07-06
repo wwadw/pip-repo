@@ -170,6 +170,7 @@
     </div>
     <article class="content">
       <h1>fov-filter</h1>
+      <p>当前版本：<code>0.1.11</code></p>
       <p>基于 ROS1 的 PointCloud2 FOV 过滤器。它直接读取 bag 包中的点云话题，按多个水平/垂直 FOV 区域以及距离范围做实时过滤，并把结果发布到 ROS 话题。</p>
       <p>这个包自带 bag 播放控制，不依赖 <code>rosbag play</code>，因此支持：</p>
       <ul>
@@ -188,16 +189,20 @@
       </ul>
       <h2>安装</h2>
       <p>建议在已 <code>source</code> ROS 环境后安装：</p>
-      <pre><code class="language-bash">cd /home/ww/test/scripts/fov_filter
-uv venv --python &quot;$(which python3)&quot; --system-site-packages
-source .venv_ros/bin/activate
-source /opt/ros/noetic/setup.bash
-uv pip install -e .</code></pre>
-      <p>如果你的 <code>python3</code> 来自 conda 或其它自定义环境，这种方式会把当前 Python 环境里的 ROS 相关运行时依赖一并复用进去，通常比裸 <code>uv venv</code> 更稳。</p>
+      <pre><code class="language-bash">source /opt/ros/noetic/setup.bash
+python -m pip install --force-reinstall --no-deps https://pip.wgists.me/dist/fov_filter/fov_filter-0.1.11-py3-none-any.whl
+hash -r</code></pre>
+      <p>检查当前环境中的版本和安装位置：</p>
+      <pre><code class="language-bash">python -m pip show fov-filter
+which fov-filter-ui</code></pre>
+      <p>如果 <code>which fov-filter-ui</code> 指向 <code>~/.local/bin/fov-filter-ui</code>，请确认它没有继续指向旧的 Python3.8 用户包；否则可能出现 conda 环境和 <code>~/.local/lib/python3.8/site-packages</code> 混用的问题。</p>
       <p>构建 wheel：</p>
-      <pre><code class="language-bash">uv build --wheel</code></pre>
-      <p>从 wheel 安装：</p>
-      <pre><code class="language-bash">uv pip install dist/fov_filter-0.1.0-py3-none-any.whl</code></pre>
+      <pre><code class="language-bash">cd /home/ww/pip-repo/code/fov_filter
+conda activate env1
+python -m pip wheel --no-deps -w dist .</code></pre>
+      <p>重新安装当前 wheel：</p>
+      <pre><code class="language-bash">conda activate env1
+python -m pip install --force-reinstall --no-deps https://pip.wgists.me/dist/fov_filter/fov_filter-0.1.11-py3-none-any.whl</code></pre>
       <p>构建结果在 <code>dist/</code> 下，安装后可直接使用三个命令：</p>
       <ul>
         <li><code>fov-filter</code></li>
@@ -212,21 +217,42 @@ roscore</code></pre>
 fov-filter \
   --bag /home/ww/bags/ren/go7.bag \
   --topic /mfla/frame_cloud \
+  --topic-prefix /fov_filter/mfla_frame_cloud \
   --paint-rejected \
   --region front:-45:45:-15:20 \
   --region side_left:45:110:-20:25</code></pre>
-      <p>默认发布的话题：</p>
+      <p>UI 中配置的 FOV 区域表示“要删除/过滤掉的区域”。默认发布的话题。建议多路点云或多开播放器时使用 <code>--topic-prefix</code>，例如 <code>--topic-prefix /fov_filter/mfla_frame_cloud</code>，这样整组输出和控制话题都能按数据源区分：</p>
       <ul>
-        <li><code>/fov_filter/cloud</code>：过滤后保留的点云</li>
-        <li><code>/fov_filter/rejected</code>：被过滤掉的点云</li>
-        <li><code>/fov_filter/visualized</code>：可选的彩色可视化点云，过滤掉的点为红色</li>
+        <li><code>/fov_filter/points_kept</code>：过滤后保留的点云</li>
+        <li><code>/fov_filter/points_removed</code>：被过滤掉的点云</li>
+        <li><code>/fov_filter/points_colored</code>：可选的彩色可视化点云，保留点和移除点用不同颜色显示</li>
+        <li><code>/fov_filter/fov_regions</code>：FOV 区域线框，RViz 中添加 <code>MarkerArray</code> 可直接查看</li>
         <li><code>/fov_filter/state</code>：当前播放与区域状态，JSON 字符串</li>
         <li><code>/fov_filter/command</code>：控制命令输入，JSON 字符串</li>
       </ul>
+      <p>RViz 可视化建议：</p>
+      <ol>
+        <li>添加 <code>PointCloud2</code>，话题选 <code>/fov_filter/points_kept</code> 或 <code>/fov_filter/points_colored</code></li>
+        <li>添加 <code>MarkerArray</code>，话题选 <code>/fov_filter/fov_regions</code></li>
+        <li>如果只想看被删掉的点，添加 <code>PointCloud2</code> 并选择 <code>/fov_filter/points_removed</code></li>
+        <li>如果启用了 <code>--publish-clock</code> 并使用 bag 时间，记得设置 ROS 参数 <code>/use_sim_time=true</code></li>
+      </ol>
+      <p>从 <code>0.1.11</code> 开始，播放器内部的自动播放循环使用墙钟调度，不再依赖 <code>rospy.Rate.sleep()</code>。因此即使 <code>/use_sim_time=true</code> 但 <code>/clock</code> 没有推进，UI 的播放按钮也不会被 ROS 仿真时间卡住。</p>
       <h2>动态控制</h2>
-      <p>如果你不想手动敲命令，直接开桌面滑块面板：</p>
+      <p>可以只打开桌面滑块面板，在 UI 中选择 bag 和点云话题后直接启动后台 <code>fov-filter</code>：</p>
       <pre><code class="language-bash">fov-filter-ui</code></pre>
-      <p>建议的使用方式：</p>
+      <p>UI 一站式启动流程：</p>
+      <ol>
+        <li>点击“选择 bag”并选择 <code>.bag</code> 文件</li>
+        <li>等待 UI 自动扫描 <code>PointCloud2</code> 话题</li>
+        <li>在下拉框选择需要过滤的点云话题</li>
+        <li>点击“加载 / 启动 bag”</li>
+        <li>启动后继续在同一个 UI 中播放、单步、调 FOV、导出配置</li>
+      </ol>
+      <p>如果播放器使用了自定义前缀，UI 和控制命令也使用同一个前缀：</p>
+      <pre><code class="language-bash">fov-filter-ui --topic-prefix /fov_filter/mfla_frame_cloud
+fov-filter-ctl --topic-prefix /fov_filter/mfla_frame_cloud status</code></pre>
+      <p>外部终端启动播放器仍然支持：</p>
       <ol>
         <li>先启动 <code>fov-filter</code></li>
         <li>再启动 <code>fov-filter-ui</code></li>
@@ -235,9 +261,13 @@ fov-filter \
       <p>UI 提供：</p>
       <ul>
         <li>播放 / 暂停 / 前进一帧 / 后退一帧</li>
+        <li>在 UI 中选择 bag 文件，自动扫描其中的 <code>PointCloud2</code> 话题，并通过下拉框选择后加载</li>
+        <li>如果当前没有可用播放器，UI 会自动启动后台 <code>fov-filter</code></li>
+        <li>如果当前已有同前缀播放器，UI 会通过 <code>load_bag</code> 命令热加载新的 bag 和话题</li>
         <li>bag 帧位置滑块</li>
         <li>播放倍率步进输入器</li>
         <li>区域列表</li>
+        <li>点击“新增区域”直接创建区域，双击列表中的区域名称可行内重命名</li>
         <li>水平 / 垂直角 / 距离的滑块 + 手动输入</li>
         <li>动态新增 / 删除区域</li>
         <li><code>paint_rejected</code>、<code>publish_rejected</code>、<code>loop</code> 开关</li>
@@ -268,7 +298,7 @@ fov-filter-ctl prev</code></pre>
       <p>查看当前状态：</p>
       <pre><code class="language-bash">fov-filter-ctl status</code></pre>
       <p>从 TOML/YAML 重新加载配置：</p>
-      <pre><code class="language-bash">fov-filter-ctl load-config /home/ww/test/scripts/fov_filter/config.example.toml</code></pre>
+      <pre><code class="language-bash">fov-filter-ctl load-config /home/ww/pip-repo/code/fov_filter/config.example.toml</code></pre>
       <p>导出当前启用区域为 <code>filter_regions</code> YAML：</p>
       <pre><code class="language-bash">fov-filter-ctl export-config ./filter_regions.yaml</code></pre>
       <h2>配置文件</h2>
@@ -277,15 +307,28 @@ fov-filter-ctl prev</code></pre>
       <ul>
         <li><code>--bag</code>：bag 文件路径</li>
         <li><code>--topic</code>：需要读取的 PointCloud2 话题</li>
+        <li><code>--topic-prefix</code>：整组输出/控制话题前缀，默认 <code>/fov_filter</code></li>
         <li><code>--region</code>：启动时添加的区域，格式 <code>name:hmin:hmax:vmin:vmax[:enabled][:dmin:dmax]</code></li>
         <li><code>--rate</code>：播放倍率，默认 <code>1.0</code></li>
         <li><code>--start-paused</code>：启动后先暂停</li>
         <li><code>--loop</code>：播到末尾后循环</li>
         <li><code>--paint-rejected</code>：发布彩色可视化点云并将过滤点标红</li>
         <li><code>--publish-clock</code>：同步发布 <code>/clock</code></li>
+        <li><code>--marker-topic</code>：RViz FOV 区域 <code>MarkerArray</code> 话题，默认随 <code>--topic-prefix</code> 生成为 <code>.../fov_regions</code></li>
       </ul>
-      <p>水平角定义为 <code>atan2(y, x)</code>，内部按 <code>[0, 360)</code> 归一化比较，因此同时支持 <code>-45..45</code> 和 <code>315..45</code> 这两种写法。垂直角定义为 <code>atan2(z, hypot(x, y))</code>，范围 <code>[-90, 90]</code> 度。距离使用三维欧氏距离，单位米，当前默认编辑范围为 <code>0~2m</code>。</p>
+      <p>水平角定义为 <code>atan2(y, x)</code>，内部按 <code>[0, 360)</code> 归一化比较，因此同时支持 <code>-45..45</code> 和 <code>315..45</code> 这两种写法。垂直角定义为 <code>atan2(z, hypot(x, y))</code>，范围 <code>[-90, 90]</code> 度。距离使用三维欧氏距离，单位米，当前默认编辑范围为 <code>0~2m</code>。命中启用区域的点会发布到 <code>/fov_filter/points_removed</code>，未命中的点会保留到 <code>/fov_filter/points_kept</code>。</p>
       <p>若未配置任何启用中的区域，则默认不过滤，直接保留所有有效点。</p>
+      <h2>bag 加载排查</h2>
+      <p>播放器现在会更宽容地读取 bag：会尝试打开未索引 bag，使用 bag 自身时间做播放调度，并在状态消息中的 <code>load_warnings</code> 给出加载提示。若指定话题不存在，会直接列出 bag 内可用的 <code>PointCloud2</code> 话题，方便确认 <code>--topic</code> 是否写错。</p>
+      <p>UI 启动的后台播放器日志会写到：</p>
+      <pre><code class="language-bash">/tmp/fov_filter_ui_player_&lt;UI进程号&gt;.log</code></pre>
+      <p>查看最新日志：</p>
+      <pre><code class="language-bash">tail -f &quot;$(ls -t /tmp/fov_filter_ui_player_*.log | head -1)&quot;</code></pre>
+      <p>如果日志中能看到 <code>收到命令 op=play</code>，但没有 <code>播放推进到 index=...</code>，优先检查是否运行的是旧版本：</p>
+      <pre><code class="language-bash">conda activate env1
+python -m pip show fov-filter
+which fov-filter-ui</code></pre>
+      <p>当前 <code>0.1.11</code> 已避免 <code>/use_sim_time</code> 卡住播放循环；正常播放时日志会持续打印 <code>播放推进到 index=...</code>。</p>
     </article>
   </main>
 </body>
