@@ -15,7 +15,7 @@ from tkinter import filedialog, ttk
 
 from fov_filter.client import FovFilterRosClient
 from fov_filter.config_io import write_filter_regions_yaml
-from fov_filter.types import DEFAULT_MAX_DISTANCE_M, parse_regions_config
+from fov_filter.types import DEFAULT_MAX_DISTANCE_M, SUPPORTED_LIDAR_MODELS, parse_regions_config
 
 
 def topic_join(prefix: str, leaf: str) -> str:
@@ -106,6 +106,7 @@ class FovFilterControlPanel:
         self.loop_value = tk.BooleanVar(value=False)
         self.paint_rejected_value = tk.BooleanVar(value=False)
         self.publish_rejected_value = tk.BooleanVar(value=True)
+        self.export_lidar_model_value = tk.StringVar(value="pointcloud")
 
         self.region_name_value = tk.StringVar(value="region_1")
         self.region_enabled_value = tk.BooleanVar(value=True)
@@ -493,6 +494,18 @@ class FovFilterControlPanel:
             command=self._apply_options,
             style="Field.TCheckbutton",
         ).pack(side=tk.LEFT, padx=(20, 0), pady=(20, 0))
+
+        export_model_box = ttk.Frame(option_row, style="Panel.TFrame")
+        export_model_box.pack(side=tk.LEFT, padx=(28, 0))
+        ttk.Label(export_model_box, text="导出雷达", style="EditorLabel.TLabel").pack(anchor="w")
+        self.export_lidar_model_combobox = ttk.Combobox(
+            export_model_box,
+            textvariable=self.export_lidar_model_value,
+            values=sorted(SUPPORTED_LIDAR_MODELS),
+            width=12,
+            state="readonly",
+        )
+        self.export_lidar_model_combobox.pack(anchor="w", pady=(6, 0))
 
         content = ttk.Frame(root, style="App.TFrame")
         content.pack(fill=tk.BOTH, expand=True, pady=(16, 0))
@@ -1458,8 +1471,14 @@ class FovFilterControlPanel:
 
         try:
             regions = parse_regions_config(self._state.get("regions"))
-            exported_count = write_filter_regions_yaml(path, regions, enabled_only=True)
-            self._set_status(f"已导出 {exported_count} 个启用区域到 {path}")
+            lidar_model = self.export_lidar_model_value.get() or "pointcloud"
+            exported_count = write_filter_regions_yaml(
+                path,
+                regions,
+                enabled_only=True,
+                lidar_model=lidar_model,
+            )
+            self._set_status(f"已按 {lidar_model} 导出 {exported_count} 个启用区域到 {path}")
         except Exception as exc:
             self._set_status(f"导出失败: {exc}")
 

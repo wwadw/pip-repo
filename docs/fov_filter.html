@@ -170,7 +170,7 @@
     </div>
     <article class="content">
       <h1>fov-filter</h1>
-      <p>当前版本：<code>0.1.11</code></p>
+      <p>当前版本：<code>0.1.12</code></p>
       <p>基于 ROS1 的 PointCloud2 FOV 过滤器。它直接读取 bag 包中的点云话题，按多个水平/垂直 FOV 区域以及距离范围做实时过滤，并把结果发布到 ROS 话题。</p>
       <p>这个包自带 bag 播放控制，不依赖 <code>rosbag play</code>，因此支持：</p>
       <ul>
@@ -190,7 +190,7 @@
       <h2>安装</h2>
       <p>建议在已 <code>source</code> ROS 环境后安装：</p>
       <pre><code class="language-bash">source /opt/ros/noetic/setup.bash
-python -m pip install --force-reinstall --no-deps https://pip.wgists.me/dist/fov_filter/fov_filter-0.1.11-py3-none-any.whl
+python -m pip install --force-reinstall --no-deps https://pip.wgists.me/dist/fov_filter/fov_filter-0.1.12-py3-none-any.whl
 hash -r</code></pre>
       <p>检查当前环境中的版本和安装位置：</p>
       <pre><code class="language-bash">python -m pip show fov-filter
@@ -202,7 +202,7 @@ conda activate env1
 python -m pip wheel --no-deps -w dist .</code></pre>
       <p>重新安装当前 wheel：</p>
       <pre><code class="language-bash">conda activate env1
-python -m pip install --force-reinstall --no-deps https://pip.wgists.me/dist/fov_filter/fov_filter-0.1.11-py3-none-any.whl</code></pre>
+python -m pip install --force-reinstall --no-deps https://pip.wgists.me/dist/fov_filter/fov_filter-0.1.12-py3-none-any.whl</code></pre>
       <p>构建结果在 <code>dist/</code> 下，安装后可直接使用三个命令：</p>
       <ul>
         <li><code>fov-filter</code></li>
@@ -301,6 +301,9 @@ fov-filter-ctl prev</code></pre>
       <pre><code class="language-bash">fov-filter-ctl load-config /home/ww/pip-repo/code/fov_filter/config.example.toml</code></pre>
       <p>导出当前启用区域为 <code>filter_regions</code> YAML：</p>
       <pre><code class="language-bash">fov-filter-ctl export-config ./filter_regions.yaml</code></pre>
+      <p>如果要把 UI/RViz 里按发布点云角度标出来的区域导出给 RSHELIOS 驱动使用，导出时加 <code>--lidar-model rshelios</code>：</p>
+      <pre><code class="language-bash">fov-filter-ctl export-config ./filter_regions.yaml --lidar-model rshelios</code></pre>
+      <p>RSHELIOS 解码器在发布点云前用雷达内部水平角过滤，而发布点云的 <code>y</code> 轴符号会让水平角近似变成 <code>(360 - 驱动内部角度) % 360</code>。因此这个选项只在导出 <code>filter_regions</code> 时把水平角转换为驱动内部角度；UI、Marker 和实时过滤仍然按 RViz 中看到的发布点云坐标工作。导出的 YAML 缩进与 rslidar_sdk 常用配置保持一致。</p>
       <h2>配置文件</h2>
       <p>可使用 <code>--config</code> 指定 TOML/YAML 文件。示例 TOML 见 <code>config.example.toml</code>。UI 和 <code>fov-filter-ctl export-config</code> 导出的 YAML 顶层为 <code>filter_regions:</code>。</p>
       <h2>参数说明</h2>
@@ -328,7 +331,7 @@ fov-filter-ctl prev</code></pre>
       <pre><code class="language-bash">conda activate env1
 python -m pip show fov-filter
 which fov-filter-ui</code></pre>
-      <p>当前 <code>0.1.11</code> 已避免 <code>/use_sim_time</code> 卡住播放循环；正常播放时日志会持续打印 <code>播放推进到 index=...</code>。</p>
+      <p>当前 <code>0.1.12</code> 已避免 <code>/use_sim_time</code> 卡住播放循环；正常播放时日志会持续打印 <code>播放推进到 index=...</code>。</p>
     </article>
   </main>
 </body>

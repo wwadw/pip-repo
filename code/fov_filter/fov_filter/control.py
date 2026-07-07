@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from fov_filter.client import FovFilterRosClient
 from fov_filter.config_io import write_filter_regions_yaml
-from fov_filter.types import parse_regions_config
+from fov_filter.types import SUPPORTED_LIDAR_MODELS, normalize_lidar_model, parse_regions_config
 
 
 def topic_join(prefix: str, leaf: str) -> str:
@@ -80,6 +80,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     export_parser = subparsers.add_parser("export-config")
     export_parser.add_argument("path")
+    export_parser.add_argument(
+        "--lidar-model",
+        default="pointcloud",
+        choices=sorted(SUPPORTED_LIDAR_MODELS),
+        help="导出给驱动时使用的角度模型；rshelios 会把发布点云水平角转换为驱动内部水平角",
+    )
 
     option_parser = subparsers.add_parser("set-option")
     option_parser.add_argument("--rate", type=float)
@@ -199,13 +205,20 @@ def main(argv: List[str] = None) -> None:
     if args.subcommand == "export-config":
         state = client.request_status(timeout=args.timeout)
         regions = parse_regions_config(state.get("regions"))
-        exported_count = write_filter_regions_yaml(args.path, regions, enabled_only=True)
+        lidar_model = normalize_lidar_model(args.lidar_model)
+        exported_count = write_filter_regions_yaml(
+            args.path,
+            regions,
+            enabled_only=True,
+            lidar_model=lidar_model,
+        )
         print(
             json.dumps(
                 {
                     "exported_regions": exported_count,
                     "path": args.path,
                     "enabled_only": True,
+                    "lidar_model": lidar_model,
                 },
                 ensure_ascii=False,
                 indent=2,

@@ -5,6 +5,12 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 DEFAULT_MIN_DISTANCE_M = 0.0
 DEFAULT_MAX_DISTANCE_M = 2.0
+LIDAR_MODEL_POINTCLOUD = "pointcloud"
+LIDAR_MODEL_RSHELIOS = "rshelios"
+SUPPORTED_LIDAR_MODELS = {
+    LIDAR_MODEL_POINTCLOUD,
+    LIDAR_MODEL_RSHELIOS,
+}
 
 
 def parse_bool(value: Any, default: bool = True) -> bool:
@@ -20,6 +26,32 @@ def parse_bool(value: Any, default: bool = True) -> bool:
     if text in {"0", "false", "no", "n", "off", "disable", "disabled"}:
         return False
     raise ValueError(f"无法解析布尔值: {value}")
+
+
+def normalize_lidar_model(value: Any) -> str:
+    model = str(value or LIDAR_MODEL_POINTCLOUD).strip().lower().replace("_", "-")
+    aliases = {
+        "default": LIDAR_MODEL_POINTCLOUD,
+        "published": LIDAR_MODEL_POINTCLOUD,
+        "published-pointcloud": LIDAR_MODEL_POINTCLOUD,
+        "point-cloud": LIDAR_MODEL_POINTCLOUD,
+        "rslidar-rshelios": LIDAR_MODEL_RSHELIOS,
+        "rs-helios": LIDAR_MODEL_RSHELIOS,
+        "rshelios": LIDAR_MODEL_RSHELIOS,
+    }
+    model = aliases.get(model, model)
+    if model not in SUPPORTED_LIDAR_MODELS:
+        supported = ", ".join(sorted(SUPPORTED_LIDAR_MODELS))
+        raise ValueError(f"不支持的 lidar_model: {value}，可选: {supported}")
+    return model
+
+
+def pointcloud_horizontal_to_driver_deg(angle_deg: float, lidar_model: str) -> float:
+    model = normalize_lidar_model(lidar_model)
+    normalized = float(angle_deg) % 360.0
+    if model == LIDAR_MODEL_RSHELIOS:
+        return (360.0 - normalized) % 360.0
+    return normalized
 
 
 @dataclass
@@ -199,10 +231,29 @@ class FovRegion:
             "enabled": self.enabled,
         }
 
-    def to_filter_region_dict(self) -> Dict[str, float]:
+    def to_filter_region_dict(self, lidar_model: str = LIDAR_MODEL_POINTCLOUD) -> Dict[str, float]:
+        model = normalize_lidar_model(lidar_model)
+        if model == LIDAR_MODEL_RSHELIOS:
+            driver_min = pointcloud_horizontal_to_driver_deg(
+                self.horizontal_max_deg,
+                model,
+            )
+            driver_max = pointcloud_horizontal_to_driver_deg(
+                self.horizontal_min_deg,
+                model,
+            )
+        else:
+            driver_min = pointcloud_horizontal_to_driver_deg(
+                self.horizontal_min_deg,
+                model,
+            )
+            driver_max = pointcloud_horizontal_to_driver_deg(
+                self.horizontal_max_deg,
+                model,
+            )
         return {
-            "min_horiz_deg": float(self.horizontal_min_deg % 360.0),
-            "max_horiz_deg": float(self.horizontal_max_deg % 360.0),
+            "min_horiz_deg": float(driver_min),
+            "max_horiz_deg": float(driver_max),
             "min_vert_deg": float(self.vertical_min_deg),
             "max_vert_deg": float(self.vertical_max_deg),
             "min_dist_m": float(self.min_distance_m),
