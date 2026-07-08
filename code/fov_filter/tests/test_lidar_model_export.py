@@ -48,6 +48,35 @@ class LidarModelExportTest(unittest.TestCase):
             "          max_dist_m: 2.0\n",
         )
 
+    def test_rshelios_export_keeps_zero_degree_upper_boundary_as_360(self):
+        regions = [
+            FovRegion(
+                name="front_center",
+                horizontal_min_deg=0.0,
+                horizontal_max_deg=20.0,
+                vertical_min_deg=-90.0,
+                vertical_max_deg=-17.0,
+                min_distance_m=0.0,
+                max_distance_m=1.45,
+            )
+        ]
+
+        content = dump_filter_regions_yaml(regions, lidar_model="rshelios")
+        exported = yaml.safe_load(content)
+
+        self.assertEqual(exported["filter_regions"][0]["min_horiz_deg"], 340.0)
+        self.assertEqual(exported["filter_regions"][0]["max_horiz_deg"], 360.0)
+        self.assertEqual(
+            content,
+            "filter_regions:\n"
+            "        - min_horiz_deg: 340.0\n"
+            "          max_horiz_deg: 360.0\n"
+            "          min_vert_deg: -90.0\n"
+            "          max_vert_deg: -17.0\n"
+            "          min_dist_m: 0.0\n"
+            "          max_dist_m: 1.45\n",
+        )
+
     def test_default_export_keeps_pointcloud_horizontal_angles_unchanged(self):
         regions = [
             FovRegion(

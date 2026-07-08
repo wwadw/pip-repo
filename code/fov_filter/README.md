@@ -1,6 +1,6 @@
 # fov-filter
 
-当前版本：`0.1.12`
+当前版本：`0.1.13`
 
 基于 ROS1 的 PointCloud2 FOV 过滤器。它直接读取 bag 包中的点云话题，按多个水平/垂直 FOV 区域以及距离范围做实时过滤，并把结果发布到 ROS 话题。
 
@@ -25,7 +25,7 @@
 
 ```bash
 source /opt/ros/noetic/setup.bash
-python -m pip install --force-reinstall --no-deps https://pip.wgists.me/dist/fov_filter/fov_filter-0.1.12-py3-none-any.whl
+python -m pip install --force-reinstall --no-deps https://pip.wgists.me/dist/fov_filter/fov_filter-0.1.13-py3-none-any.whl
 hash -r
 ```
 
@@ -50,7 +50,7 @@ python -m pip wheel --no-deps -w dist .
 
 ```bash
 conda activate env1
-python -m pip install --force-reinstall --no-deps https://pip.wgists.me/dist/fov_filter/fov_filter-0.1.12-py3-none-any.whl
+python -m pip install --force-reinstall --no-deps https://pip.wgists.me/dist/fov_filter/fov_filter-0.1.13-py3-none-any.whl
 ```
 
 构建结果在 `dist/` 下，安装后可直接使用三个命令：
@@ -259,4 +259,4 @@ python -m pip show fov-filter
 which fov-filter-ui
 ```
 
-当前 `0.1.12` 已避免 `/use_sim_time` 卡住播放循环；正常播放时日志会持续打印 `播放推进到 index=...`。
+当前 `0.1.13` 已避免 `/use_sim_time` 卡住播放循环；正常播放时日志会持续打印 `播放推进到 index=...`。

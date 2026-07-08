@@ -54,6 +54,13 @@ def pointcloud_horizontal_to_driver_deg(angle_deg: float, lidar_model: str) -> f
     return normalized
 
 
+def pointcloud_horizontal_to_driver_max_deg(angle_deg: float, lidar_model: str) -> float:
+    converted = pointcloud_horizontal_to_driver_deg(angle_deg, lidar_model)
+    if normalize_lidar_model(lidar_model) == LIDAR_MODEL_RSHELIOS and converted == 0.0:
+        return 360.0
+    return converted
+
+
 @dataclass
 class FovRegion:
     name: str
@@ -238,7 +245,7 @@ class FovRegion:
                 self.horizontal_max_deg,
                 model,
             )
-            driver_max = pointcloud_horizontal_to_driver_deg(
+            driver_max = pointcloud_horizontal_to_driver_max_deg(
                 self.horizontal_min_deg,
                 model,
             )
