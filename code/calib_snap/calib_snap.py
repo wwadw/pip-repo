@@ -116,6 +116,13 @@ def parse_args() -> argparse.Namespace:
         help="Dense mode: raw point cloud cache limit in MiB (default: 256).",
     )
     parser.add_argument(
+        "--voxel-size", type=float,
+        help=(
+            "Dense mode: voxel edge length in meters for downsampling the merged "
+            "cloud before saving; 0 disables it (default: 0)."
+        ),
+    )
+    parser.add_argument(
         "--cancel-key",
         help="Dense mode: cancel a capture before writing starts (default: c).",
     )
@@ -278,13 +285,16 @@ def parse_args() -> argparse.Namespace:
     args.resolved_capture_mode = resolve_capture_mode(args, parser)
     dense_options = (
         args.accumulate_frames, args.accumulate_seconds, args.accumulate_timeout,
-        args.accumulate_max_mb, args.cancel_key,
+        args.accumulate_max_mb, args.cancel_key, args.voxel_size,
     )
     if args.resolved_capture_mode != "dense" and any(v is not None for v in dense_options):
-        parser.error("Accumulation options and --cancel-key require --capture-mode=dense.")
+        parser.error(
+            "Accumulation options, --voxel-size and --cancel-key require --capture-mode=dense."
+        )
     args.accumulate_timeout = 5.0 if args.accumulate_timeout is None else args.accumulate_timeout
     args.accumulate_max_mb = 256 if args.accumulate_max_mb is None else args.accumulate_max_mb
     args.cancel_key = "c" if args.cancel_key is None else args.cancel_key
+    args.voxel_size = 0.0 if args.voxel_size is None else args.voxel_size
     if args.resolved_capture_mode == "dense":
         try:
             validate_dense_limits(
@@ -292,6 +302,7 @@ def parse_args() -> argparse.Namespace:
                 args.accumulate_timeout, args.accumulate_max_mb * 1024 * 1024,
                 args.max_pointcloud_age,
             )
+            validate_voxel_size(args.voxel_size)
         except ValueError as exc:
             parser.error(str(exc))
         keys = [value[:1].lower() for value in (args.save_key, args.cancel_key, args.quit_key)]
@@ -563,6 +574,11 @@ def validate_dense_limits(frame_limit, duration, timeout, max_bytes, max_age):
         raise ValueError("--max-pointcloud-age must be finite in dense mode.")
 
 
+def validate_voxel_size(voxel_size):
+    if not math.isfinite(voxel_size) or voxel_size < 0:
+        raise ValueError("--voxel-size must be finite and nonnegative; 0 disables it.")
+
+
 def dense_capture_fields(msg, requested):
     lookup = pointfield_map(msg)
     if len(lookup) != len(msg.fields):
@@ -799,11 +815,44 @@ def iter_dense_points(clouds, fields):
                 yield ordered
 
 
-def save_pointclouds_as_pcd(clouds, output_path, requested_fields):
+def voxel_downsample_points(points, fields, voxel_size):
+    """Use XYZ centroids and retain the first observation's other fields."""
+    xyz_columns = []
+    column = 0
+    for item in fields:
+        if item.name in {"x", "y", "z"}:
+            if item.datatype not in {PointField.FLOAT32, PointField.FLOAT64}:
+                raise ValueError("Voxel downsampling requires floating-point x, y, z fields.")
+            xyz_columns.append(column)
+        column += item.count
+    voxels = {}
+    for point in points:
+        scaled = tuple(point[index] / voxel_size for index in xyz_columns)
+        if not all(math.isfinite(value) for value in scaled):
+            raise ValueError("Point coordinates are too large relative to --voxel-size.")
+        key = tuple(math.floor(value) for value in scaled)
+        state = voxels.get(key)
+        if state is None:
+            voxels[key] = [1, list(point)]
+        else:
+            state[0] += 1
+            # An incremental mean avoids overflowing sums for large coordinates.
+            for index in xyz_columns:
+                state[1][index] += (point[index] - state[1][index]) / state[0]
+    return [point for count, point in voxels.values()]
+
+
+def save_pointclouds_as_pcd(clouds, output_path, requested_fields, voxel_size=0.0):
+    validate_voxel_size(voxel_size)
     if not clouds:
         raise ValueError("No point clouds to save.")
     fields = dense_capture_fields(clouds[0], requested_fields)
-    point_count = sum(1 for _ in iter_dense_points(clouds, fields))
+    if voxel_size > 0:
+        points = voxel_downsample_points(iter_dense_points(clouds, fields), fields, voxel_size)
+        point_count = len(points)
+    else:
+        point_count = sum(1 for _ in iter_dense_points(clouds, fields))
+        points = iter_dense_points(clouds, fields)
     if not point_count:
         raise ValueError("No finite XYZ points to save.")
     names = [item.name for item in fields]
@@ -818,12 +867,14 @@ def save_pointclouds_as_pcd(clouds, output_path, requested_fields):
     ]
     with Path(output_path).open("w", encoding="ascii") as stream:
         stream.write("\n".join(header) + "\n")
-        for point in iter_dense_points(clouds, fields):
+        for point in points:
             stream.write(" ".join(format_pcd_value(value) for value in point) + "\n")
     return point_count, names
 
 
-def save_dense_capture_pair(snapshot, image_dir, pointcloud_dir, image_ext, capture_index):
+def save_dense_capture_pair(
+    snapshot, image_dir, pointcloud_dir, image_ext, capture_index, voxel_size=0.0,
+):
     temporary = []
     published = []
     try:
@@ -834,7 +885,8 @@ def save_dense_capture_pair(snapshot, image_dir, pointcloud_dir, image_ext, capt
         if not cv2.imwrite(str(temporary[0]), snapshot.image):
             raise RuntimeError("Failed to write capture image.")
         point_count, names = save_pointclouds_as_pcd(
-            snapshot.clouds, temporary[1], [item.name for item in snapshot.fields]
+            snapshot.clouds, temporary[1], [item.name for item in snapshot.fields],
+            voxel_size=voxel_size,
         )
         for _ in range(10):
             stem = (
@@ -913,6 +965,7 @@ class CalibrationCaptureNode:
         accumulate_seconds: Optional[float] = None,
         accumulate_timeout: float = 5.0,
         accumulate_max_mb: int = 256,
+        voxel_size: float = 0.0,
     ) -> None:
         self._input_mode = input_mode
         self._capture_mode = capture_mode
@@ -921,6 +974,8 @@ class CalibrationCaptureNode:
         self._image_ext = image_ext
         self._requested_pcd_fields = requested_pcd_fields
         self._max_pointcloud_age = max_pointcloud_age
+        validate_voxel_size(voxel_size)
+        self._voxel_size = voxel_size
         self._image_writer = image_writer
         self._image_save_mode = image_save_mode
         self._image_interval = max(1, image_interval)
@@ -1031,7 +1086,7 @@ class CalibrationCaptureNode:
         try:
             image_path, pointcloud_path, point_count, names = save_dense_capture_pair(
                 snapshot, self._image_dir, self._pointcloud_dir, self._image_ext,
-                capture_index,
+                capture_index, self._voxel_size,
             )
             with self._lock:
                 self._capture_index = capture_index
@@ -1041,11 +1096,12 @@ class CalibrationCaptureNode:
             ]
             rospy.loginfo(
                 "Saved dense capture %06d (session=%d): image=%s, pointcloud=%s, "
-                "reason=%s, frames=%d, raw_points=%d, valid_points=%d, elapsed=%.3fs, "
+                "reason=%s, frames=%d, raw_points=%d, saved_points=%d, voxel_size=%gm, "
+                "elapsed=%.3fs, "
                 "cloud_stamps=%s, image_stamp=%s, frame_id=%s, fields=%s",
                 capture_index, snapshot.session_id, image_path, pointcloud_path,
                 snapshot.reason, len(snapshot.clouds), snapshot.raw_point_count,
-                point_count, snapshot.finished_at - snapshot.started_at,
+                point_count, self._voxel_size, snapshot.finished_at - snapshot.started_at,
                 (min(stamps), max(stamps)) if stamps else "unstamped",
                 snapshot.image_stamp, snapshot.frame_id, ",".join(names),
             )
@@ -1370,6 +1426,7 @@ def main() -> None:
         accumulate_seconds=args.accumulate_seconds,
         accumulate_timeout=args.accumulate_timeout,
         accumulate_max_mb=args.accumulate_max_mb,
+        voxel_size=args.voxel_size,
     )
     try:
         run_capture_inputs(args, node, image_writer)
@@ -1384,10 +1441,11 @@ def run_capture_inputs(args, node, image_writer=None):
     quit_key = args.quit_key[:1]
     if capture_mode == "dense":
         rospy.loginfo(
-            "Dense capture: frames=%s, seconds=%s, silence_timeout=%.3fs, cache=%dMiB. "
+            "Dense capture: frames=%s, seconds=%s, silence_timeout=%.3fs, cache=%dMiB, "
+            "voxel_size=%gm. "
             "Keep camera, lidar and calibration target still while collecting.",
             args.accumulate_frames, args.accumulate_seconds,
-            args.accumulate_timeout, args.accumulate_max_mb,
+            args.accumulate_timeout, args.accumulate_max_mb, args.voxel_size,
         )
         rospy.loginfo(
             "Terminal hotkeys enabled: [%s] start accumulation, [%s] cancel, [%s] quit",

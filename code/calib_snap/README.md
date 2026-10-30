@@ -20,7 +20,7 @@
 在已加载 ROS 环境的 Python 环境中安装 wheel；`0.1.4` 起支持稠密采集：
 
 ```bash
-uv pip install /home/ww/pip-repo/dist/calib-snap/calib_snap-0.1.4-py3-none-any.whl
+uv pip install /home/ww/pip-repo/dist/calib-snap/calib_snap-0.1.5-py3-none-any.whl
 ```
 
 也可以在仓库中创建可复用系统 ROS 包的环境，从源码安装：
@@ -137,7 +137,7 @@ calib-snap \
 
 显式指定 `--capture-mode dense`，并在帧数和时长中选择一个结束条件。每次按 `s` 固定当前图像，开始接收后续点云；达到目标后自动保存一张图像和一个合并 PCD，随后等待下一轮。
 
-按帧数累加，例如每轮接收 50 帧：
+按帧数累加，例如每轮接收 50 帧，保存前使用 5 mm 体素降采样：
 
 ```bash
 calib-snap \
@@ -146,6 +146,7 @@ calib-snap \
   --pointcloud-topic /livox/lidar \
   --capture-mode dense \
   --accumulate-frames 50 \
+  --voxel-size 0.005 \
   --output-dir ./data_dense
 ```
 
@@ -169,9 +170,14 @@ RTSP 输入同样支持稠密模式，使用 `--input-mode rtsp --rtsp-uri <地�
 - `--accumulate-seconds T`：有限正数，从按下 `s` 开始计时，到 T 秒保存，默认不设置。
 - `--accumulate-timeout T`：等待首帧或下一帧可接收点云的最长时间，默认 `5.0` 秒。
 - `--accumulate-max-mb M`：正整数，原始点云数据缓存上限，默认 `256` MiB，不是进程总内存上限。
+- `--voxel-size V`：保存前对整轮点云降采样的体素边长，单位米，默认 `0` 表示关闭；`0.005` 表示 5 mm。仅接受有限非负数。
 - `--cancel-key KEY`：取消尚未开始写盘的轮次，默认 `c`。
 
-`--accumulate-frames` 和 `--accumulate-seconds` 必须且只能设置一个；这些累加参数和 `--cancel-key` 仅适用于稠密模式，稠密模式必须提供 `--pointcloud-topic`。
+`--accumulate-frames` 和 `--accumulate-seconds` 必须且只能设置一个；这些累加参数、`--voxel-size` 和 `--cancel-key` 仅适用于稠密模式，稠密模式必须提供 `--pointcloud-topic`。
+
+从 `0.1.5` 起可选择体素降采样。所有帧共用以坐标原点为基准的固定网格，每个占用体素输出一个点：XYZ 取该体素内所有有效点的质心，其他字段（包括 intensity、ring、向量字段等）保留第一条有效观测的原值。XYZ 必须为浮点字段；PCD 字段顺序、类型和元素数量保持不变。体素越大，合并的空间范围越大；标定采集可先用 `0.005`，再比较 `0.002` 和 `0.01` 的边缘与标定误差。
+
+降采样在后台保存阶段执行，减少输出 PCD 的点数，不降低采集阶段的原始缓存峰值。保存时还需要与占用体素数相关的额外内存；`--accumulate-max-mb` 继续只限制原始消息缓存。
 
 采集期间保持雷达、相机、标定板及场景静止。程序在相同 `frame_id` 下直接合并点云，不执行配准或运动补偿；保存的图像始终为按下 `s` 时的图像。按键前缓存的点云不计入本轮。
 
@@ -194,7 +200,7 @@ RTSP 输入同样支持稠密模式，使用 `--input-mode rtsp --rtsp-uri <地�
 - `images/`：采集图片
 - `pointclouds/`：对应点云 PCD
 
-每对图像和点云使用相同的文件名主干。稠密模式每轮输出一对文件，终端显示累加帧数、原始点数、缓存占用和最终有效点数。
+每对图像和点云使用相同的文件名主干。稠密模式每轮输出一对文件，终端显示累加帧数、原始点数、缓存占用、体素尺寸和最终保存点数。
 
 纯图片模式使用 `--save-dir` 指定保存目录，文件名格式为：
 
@@ -225,6 +231,11 @@ RTSP 输入同样支持稠密模式，使用 `--input-mode rtsp --rtsp-uri <地�
 - `--fps`：RTSP/Camera 采集和发布频率
 
 ## 版本新增内容
+
+### 0.1.5
+
+- 新增 `--voxel-size`，支持稠密点云在保存前按体素降采样，默认关闭。
+- XYZ 使用体素内质心，其他字段保留第一条有效观测；保存日志包含体素尺寸和输出点数。
 
 ### 0.1.4
 

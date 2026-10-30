@@ -186,7 +186,7 @@
       </ul>
       <h2>安装</h2>
       <p>在已加载 ROS 环境的 Python 环境中安装 wheel；<code>0.1.4</code> 起支持稠密采集：</p>
-      <pre><code class="language-bash">pip install https://pip.wgists.me/dist/calib-snap/calib_snap-0.1.4-py3-none-any.whl</code></pre>
+      <pre><code class="language-bash">pip install https://pip.wgists.me/dist/calib-snap/calib_snap-0.1.5-py3-none-any.whl</code></pre>
       <p>也可以在仓库中创建可复用系统 ROS 包的环境，从源码安装：</p>
       <pre><code class="language-bash">cd /home/ww/pip-repo/code/calib_snap
 source /opt/ros/noetic/setup.bash
@@ -260,13 +260,14 @@ uv pip install .</code></pre>
   --pointcloud-topic /livox/lidar</code></pre>
       <h2>稠密点云采集</h2>
       <p>显式指定 <code>--capture-mode dense</code>，并在帧数和时长中选择一个结束条件。每次按 <code>s</code> 固定当前图像，开始接收后续点云；达到目标后自动保存一张图像和一个合并 PCD，随后等待下一轮。</p>
-      <p>按帧数累加，例如每轮接收 50 帧：</p>
+      <p>按帧数累加，例如每轮接收 50 帧，保存前使用 5 mm 体素降采样：</p>
       <pre><code class="language-bash">calib-snap \
   --input-mode dual_ros \
   --source-image-topic /camera/image_raw \
   --pointcloud-topic /livox/lidar \
   --capture-mode dense \
   --accumulate-frames 50 \
+  --voxel-size 0.005 \
   --output-dir ./data_dense</code></pre>
       <p>按时长累加，例如每轮采集 3 秒：</p>
       <pre><code class="language-bash">calib-snap \
@@ -284,9 +285,12 @@ uv pip install .</code></pre>
         <li><code>--accumulate-seconds T</code>：有限正数，从按下 <code>s</code> 开始计时，到 T 秒保存，默认不设置。</li>
         <li><code>--accumulate-timeout T</code>：等待首帧或下一帧可接收点云的最长时间，默认 <code>5.0</code> 秒。</li>
         <li><code>--accumulate-max-mb M</code>：正整数，原始点云数据缓存上限，默认 <code>256</code> MiB，不是进程总内存上限。</li>
+        <li><code>--voxel-size V</code>：保存前对整轮点云降采样的体素边长，单位米，默认 <code>0</code> 表示关闭；<code>0.005</code> 表示 5 mm。仅接受有限非负数。</li>
         <li><code>--cancel-key KEY</code>：取消尚未开始写盘的轮次，默认 <code>c</code>。</li>
       </ul>
-      <p><code>--accumulate-frames</code> 和 <code>--accumulate-seconds</code> 必须且只能设置一个；这些累加参数和 <code>--cancel-key</code> 仅适用于稠密模式，稠密模式必须提供 <code>--pointcloud-topic</code>。</p>
+      <p><code>--accumulate-frames</code> 和 <code>--accumulate-seconds</code> 必须且只能设置一个；这些累加参数、<code>--voxel-size</code> 和 <code>--cancel-key</code> 仅适用于稠密模式，稠密模式必须提供 <code>--pointcloud-topic</code>。</p>
+      <p>从 <code>0.1.5</code> 起可选择体素降采样。所有帧共用以坐标原点为基准的固定网格，每个占用体素输出一个点：XYZ 取该体素内所有有效点的质心，其他字段（包括 intensity、ring、向量字段等）保留第一条有效观测的原值。XYZ 必须为浮点字段；PCD 字段顺序、类型和元素数量保持不变。体素越大，合并的空间范围越大；标定采集可先用 <code>0.005</code>，再比较 <code>0.002</code> 和 <code>0.01</code> 的边缘与标定误差。</p>
+      <p>降采样在后台保存阶段执行，减少输出 PCD 的点数，不降低采集阶段的原始缓存峰值。保存时还需要与占用体素数相关的额外内存；<code>--accumulate-max-mb</code> 继续只限制原始消息缓存。</p>
       <p>采集期间保持雷达、相机、标定板及场景静止。程序在相同 <code>frame_id</code> 下直接合并点云，不执行配准或运动补偿；保存的图像始终为按下 <code>s</code> 时的图像。按键前缓存的点云不计入本轮。</p>
       <p>空点云、过期点云、重复或倒退的非零时间戳不计帧，也不刷新断流超时；零时间戳按每次接收计帧。<code>--max-pointcloud-age</code> 在每帧接收时检查，默认 <code>0.5</code> 秒，负值关闭检查。时长到期不依赖下一帧到来。</p>
       <p>断流超时、缓存超限、坐标系或所选字段结构改变、所选字段布局非法时，本轮失败并释放缓存，不保存不完整样本。写盘时过滤 XYZ 中包含 NaN/Inf 的点，最终必须至少有一个有效点；输出为 <code>HEIGHT 1</code> 的 ASCII PCD。</p>
@@ -303,7 +307,7 @@ uv pip install .</code></pre>
         <li><code>images/</code>：采集图片</li>
         <li><code>pointclouds/</code>：对应点云 PCD</li>
       </ul>
-      <p>每对图像和点云使用相同的文件名主干。稠密模式每轮输出一对文件，终端显示累加帧数、原始点数、缓存占用和最终有效点数。</p>
+      <p>每对图像和点云使用相同的文件名主干。稠密模式每轮输出一对文件，终端显示累加帧数、原始点数、缓存占用、体素尺寸和最终保存点数。</p>
       <p>纯图片模式使用 <code>--save-dir</code> 指定保存目录，文件名格式为：</p>
       <pre><code class="language-text">&lt;prefix&gt;_YYYYmmdd_HHMMSS_micro.&lt;image-ext&gt;</code></pre>
       <p>在 <code>rtsp</code> 和 <code>camera</code> 模式下，图像还会额外发布到：</p>
@@ -329,6 +333,11 @@ uv pip install .</code></pre>
         <li><code>--fps</code>：RTSP/Camera 采集和发布频率</li>
       </ul>
       <h2>版本新增内容</h2>
+      <h3>0.1.5</h3>
+      <ul>
+        <li>新增 <code>--voxel-size</code>，支持稠密点云在保存前按体素降采样，默认关闭。</li>
+        <li>XYZ 使用体素内质心，其他字段保留第一条有效观测；保存日志包含体素尺寸和输出点数。</li>
+      </ul>
       <h3>0.1.4</h3>
       <ul>
         <li>新增 <code>dense</code> 稠密采集模式，可按帧数或时长累加点云。</li>
