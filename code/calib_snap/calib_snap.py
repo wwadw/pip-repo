@@ -15,6 +15,7 @@ until the configured frame count or duration is reached.
 """
 
 import argparse
+import json
 import math
 import os
 import select
@@ -53,6 +54,16 @@ PCD_DATATYPE_MAP = {
     PointField.FLOAT64: (8, "F"),
 }
 
+MECHANICAL_MODE = "fastcalib2-mechanical"
+ACCUMULATING_MODES = {"dense", MECHANICAL_MODE}
+MECHANICAL_REQUIRED_FIELDS = ("x", "y", "z", "intensity", "ring")
+NUMPY_POINT_TYPES = {
+    PointField.INT8: "i1", PointField.UINT8: "u1",
+    PointField.INT16: "i2", PointField.UINT16: "u2",
+    PointField.INT32: "i4", PointField.UINT32: "u4",
+    PointField.FLOAT32: "f4", PointField.FLOAT64: "f8",
+}
+
 
 def parse_args() -> argparse.Namespace:
     examples = """Examples:
@@ -89,42 +100,45 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--capture-mode",
-        choices=["auto", "paired", "image", "dense"],
+        choices=["auto", "paired", "image", "dense", MECHANICAL_MODE],
         default="auto",
         help=(
             "Capture behavior. 'auto' captures image+pointcloud when "
             "--pointcloud-topic is set, otherwise image-only. 'paired' requires "
             "--pointcloud-topic. 'image' saves images only. 'dense' accumulates "
-            "point clouds after the save key and saves one paired sample."
+            "point clouds after the save key and saves one paired sample. "
+            "'fastcalib2-mechanical' accumulates original points with checked "
+            "XYZ, intensity, ring, generated scan_id and JSON metadata."
         ),
     )
     target = parser.add_mutually_exclusive_group()
     target.add_argument(
         "--accumulate-frames", type=int,
-        help="Dense mode: finish after this many nonempty point cloud messages.",
+        help="Accumulation modes: finish after this many accepted point cloud messages.",
     )
     target.add_argument(
         "--accumulate-seconds", type=float,
-        help="Dense mode: collect for this many seconds after the save key.",
+        help="Accumulation modes: collect for this many seconds after the save key.",
     )
     parser.add_argument(
         "--accumulate-timeout", type=float,
-        help="Dense mode: maximum silence between accepted clouds (default: 5 seconds).",
+        help="Accumulation modes: maximum silence between accepted clouds (default: 5 seconds).",
     )
     parser.add_argument(
         "--accumulate-max-mb", type=int,
-        help="Dense mode: raw point cloud cache limit in MiB (default: 256).",
+        help="Accumulation modes: raw point cloud cache limit in MiB (default: 256).",
     )
     parser.add_argument(
         "--voxel-size", type=float,
         help=(
             "Dense mode: voxel edge length in meters for downsampling the merged "
-            "cloud before saving; 0 disables it (default: 0)."
+            "cloud before saving; 0 disables it (default: 0). "
+            "fastcalib2-mechanical requires 0 to preserve original observations."
         ),
     )
     parser.add_argument(
         "--cancel-key",
-        help="Dense mode: cancel a capture before writing starts (default: c).",
+        help="Accumulation modes: cancel a capture before writing starts (default: c).",
     )
     parser.add_argument(
         "--rtsp-uri",
@@ -233,7 +247,9 @@ def parse_args() -> argparse.Namespace:
         default="x,y,z,intensity",
         help=(
             "Comma-separated PointCloud2 fields saved into PCD. Fields that do "
-            "not exist in the incoming cloud are ignored."
+            "not exist in the incoming cloud are ignored in generic modes. "
+            "fastcalib2-mechanical always adds required fields and strictly "
+            "checks requested extra fields."
         ),
     )
     parser.add_argument(
@@ -287,15 +303,18 @@ def parse_args() -> argparse.Namespace:
         args.accumulate_frames, args.accumulate_seconds, args.accumulate_timeout,
         args.accumulate_max_mb, args.cancel_key, args.voxel_size,
     )
-    if args.resolved_capture_mode != "dense" and any(v is not None for v in dense_options):
+    if args.resolved_capture_mode not in ACCUMULATING_MODES and any(
+        v is not None for v in dense_options
+    ):
         parser.error(
-            "Accumulation options, --voxel-size and --cancel-key require --capture-mode=dense."
+            "Accumulation options, --voxel-size and --cancel-key require "
+            "--capture-mode=dense or fastcalib2-mechanical."
         )
     args.accumulate_timeout = 5.0 if args.accumulate_timeout is None else args.accumulate_timeout
     args.accumulate_max_mb = 256 if args.accumulate_max_mb is None else args.accumulate_max_mb
     args.cancel_key = "c" if args.cancel_key is None else args.cancel_key
     args.voxel_size = 0.0 if args.voxel_size is None else args.voxel_size
-    if args.resolved_capture_mode == "dense":
+    if args.resolved_capture_mode in ACCUMULATING_MODES:
         try:
             validate_dense_limits(
                 args.accumulate_frames, args.accumulate_seconds,
@@ -303,6 +322,8 @@ def parse_args() -> argparse.Namespace:
                 args.max_pointcloud_age,
             )
             validate_voxel_size(args.voxel_size)
+            if args.resolved_capture_mode == MECHANICAL_MODE and args.voxel_size != 0:
+                raise ValueError("fastcalib2-mechanical requires --voxel-size 0.")
         except ValueError as exc:
             parser.error(str(exc))
         keys = [value[:1].lower() for value in (args.save_key, args.cancel_key, args.quit_key)]
@@ -317,15 +338,15 @@ def resolve_capture_mode(args: argparse.Namespace, parser=None) -> str:
     pointcloud_topic = getattr(args, "pointcloud_topic", None)
     if mode == "auto":
         return "paired" if pointcloud_topic else "image"
-    if mode in {"paired", "dense"} and not pointcloud_topic:
+    if mode in {"paired", *ACCUMULATING_MODES} and not pointcloud_topic:
         message = f"--pointcloud-topic is required when --capture-mode={mode}."
         if parser is not None:
             parser.error(message)
         raise ValueError(message)
     if mode == "image":
         return "image"
-    if mode == "dense":
-        return "dense"
+    if mode in ACCUMULATING_MODES:
+        return mode
     return "paired"
 
 
@@ -614,6 +635,65 @@ def dense_field_schema(fields):
     return tuple((item.name, item.datatype, item.count) for item in fields)
 
 
+def mechanical_capture_fields(msg, requested):
+    lookup = pointfield_map(msg)
+    if len(lookup) != len(msg.fields):
+        raise ValueError("Point cloud contains duplicate field names.")
+    names = list(MECHANICAL_REQUIRED_FIELDS)
+    if "scan_id" in lookup:
+        names.append("scan_id")
+    names.extend(name for name in dict.fromkeys(requested)
+                 if name not in {*MECHANICAL_REQUIRED_FIELDS, "scan_id"})
+    fields = []
+    for name in names:
+        item = lookup.get(name)
+        if item is None:
+            raise ValueError(f"fastcalib2-mechanical requires point cloud field '{name}'.")
+        if not name.isascii() or any(char.isspace() for char in name):
+            raise ValueError(f"Invalid PCD field name: {name!r}.")
+        if item.datatype not in PCD_DATATYPE_MAP:
+            raise ValueError(f"Point cloud field '{name}' has an unsupported numeric type.")
+        if name in {*MECHANICAL_REQUIRED_FIELDS, "scan_id"} and item.count != 1:
+            raise ValueError(f"Point cloud field '{name}' must be scalar.")
+        fields.append(item)
+    validate_pointcloud_layout(msg, fields)
+    return fields
+
+
+def mechanical_point_arrays(msg, fields):
+    """Read strided records without changing the ROS message or attribute order."""
+    arrays = {}
+    for item in fields:
+        dtype = np.dtype((">" if msg.is_bigendian else "<") + NUMPY_POINT_TYPES[item.datatype])
+        values = np.ndarray(
+            shape=(msg.height, msg.width, item.count), dtype=dtype, buffer=msg.data,
+            offset=item.offset, strides=(msg.row_step, msg.point_step, dtype.itemsize),
+        )
+        arrays[item.name] = values[:, :, 0] if item.count == 1 else values
+    valid = np.ones((msg.height, msg.width), dtype=bool)
+    for name in ("x", "y", "z", "intensity"):
+        values = arrays[name]
+        finite = np.isfinite(values)
+        with np.errstate(over="ignore", invalid="ignore"):
+            converted = values.astype(np.float32)
+        if np.any(finite & ~np.isfinite(converted)):
+            raise ValueError(f"Point cloud field '{name}' overflows float32.")
+        valid &= finite
+        arrays[name] = converted
+    for name, maximum in (("ring", 65535), ("scan_id", 4294967295)):
+        if name not in arrays:
+            continue
+        # float64 represents every supported integer exactly and keeps uint32
+        # bounds from rounding to 2**32 under NumPy's float32 scalar promotion.
+        values = arrays[name].astype(np.float64, copy=False)
+        legal = np.isfinite(values) & (values >= 0) & (values <= maximum)
+        if values.dtype.kind == "f":
+            legal &= values == np.floor(values)
+        if not np.all(legal):
+            raise ValueError(f"Point cloud field '{name}' must contain integers in 0..{maximum}.")
+    return arrays, valid
+
+
 @dataclass(frozen=True)
 class DenseCaptureSnapshot:
     session_id: int
@@ -627,6 +707,7 @@ class DenseCaptureSnapshot:
     byte_count: int
     reason: str
     frame_id: str
+    mechanical_metadata: object = None
 
 
 class DenseCaptureSession:
@@ -635,6 +716,7 @@ class DenseCaptureSession:
     def __init__(
         self, requested_fields, frame_limit=None, duration=None,
         timeout=5.0, max_bytes=256 * 1024 * 1024, max_age=0.5,
+        mechanical=False,
     ):
         validate_dense_limits(frame_limit, duration, timeout, max_bytes, max_age)
         self.requested_fields = tuple(requested_fields)
@@ -643,6 +725,7 @@ class DenseCaptureSession:
         self.timeout = timeout
         self.max_bytes = max_bytes
         self.max_age = max_age
+        self.mechanical = mechanical
         self.session_id = 0
         self.error = None
         self.state = "IDLE"
@@ -663,6 +746,9 @@ class DenseCaptureSession:
         self._last_receipt = None
         self._last_stamp = None
         self._reason = ""
+        self.invalid_point_count = 0
+        self.invalid_cloud_count = 0
+        self.receipt_offsets = []
 
     def start(self, image, image_stamp, now):
         if self.state != "IDLE" or image is None:
@@ -717,13 +803,24 @@ class DenseCaptureSession:
                 self.skipped_count += 1
                 return False
             names = [item.name for item in self.fields] if self.fields else self.requested_fields
-            fields = dense_capture_fields(msg, names)
+            fields = (
+                mechanical_capture_fields(msg, names) if self.mechanical
+                else dense_capture_fields(msg, names)
+            )
             validate_pointcloud_layout(msg, fields)
             if self.frame_count and (
                 msg.header.frame_id != self.frame_id
                 or dense_field_schema(fields) != dense_field_schema(self.fields)
             ):
                 raise ValueError("Point cloud frame_id or selected field schema changed.")
+            if self.mechanical:
+                _, valid = mechanical_point_arrays(msg, fields)
+                valid_count = int(np.count_nonzero(valid))
+                self.invalid_point_count += msg.width * msg.height - valid_count
+                if not valid_count:
+                    self.invalid_cloud_count += 1
+                    self.skipped_count += 1
+                    return False
             if self.byte_count + len(msg.data) > self.max_bytes:
                 raise ValueError("Raw point cloud cache limit exceeded.")
         except (ValueError, TypeError, AttributeError, KeyError) as exc:
@@ -733,6 +830,8 @@ class DenseCaptureSession:
             self.fields = tuple(fields)
             self.frame_id = msg.header.frame_id
         self.clouds.append(msg)
+        if self.mechanical:
+            self.receipt_offsets.append(received_at - self.started_at)
         self.frame_count += 1
         self.raw_point_count += msg.width * msg.height
         self.byte_count += len(msg.data)
@@ -753,6 +852,19 @@ class DenseCaptureSession:
             self.session_id, self.image, self.image_stamp, tuple(self.clouds),
             self.fields, self.started_at, self.finished_at, self.raw_point_count,
             self.byte_count, self._reason, self.frame_id,
+            {
+                "filtered_point_count": self.invalid_point_count,
+                "invalid_cloud_count": self.invalid_cloud_count,
+                "skipped_cloud_count": self.skipped_count,
+                "receipt_offsets": list(self.receipt_offsets),
+                "limits": {
+                    "accumulate_frames": self.frame_limit,
+                    "accumulate_seconds": self.duration,
+                    "accumulate_timeout": self.timeout,
+                    "accumulate_max_bytes": self.max_bytes,
+                    "max_pointcloud_age": self.max_age,
+                },
+            } if self.mechanical else None,
         )
         self.state = "SAVING"
         self.image = None
@@ -774,12 +886,13 @@ class DenseCaptureSession:
             self.state = "IDLE"
 
     def status(self, now):
+        label = MECHANICAL_MODE if self.mechanical else "dense"
         if self.state == "IDLE":
-            return "dense: IDLE"
+            return f"{label}: IDLE"
         target = str(self.frame_limit) if self.frame_limit is not None else "-"
         elapsed = (self.finished_at if self.finished_at is not None else now) - self.started_at
         return (
-            f"dense: {self.state}, frames={self.frame_count}/{target}, "
+            f"{label}: {self.state}, frames={self.frame_count}/{target}, "
             f"raw points={self.raw_point_count}, elapsed={elapsed:.2f}s"
             f"{('/' + str(self.duration) + 's') if self.duration is not None else ''}, "
             f"cache={self.byte_count / (1024 * 1024):.2f}/"
@@ -872,8 +985,116 @@ def save_pointclouds_as_pcd(clouds, output_path, requested_fields, voxel_size=0.
     return point_count, names
 
 
+def stamp_metadata(stamp):
+    return {
+        "seconds": stamp.to_sec(),
+        "secs": getattr(stamp, "secs", None),
+        "nsecs": getattr(stamp, "nsecs", None),
+    }
+
+
+def save_mechanical_pointclouds_as_pcd(clouds, output_path, requested_fields):
+    if not clouds:
+        raise ValueError("No point clouds to save.")
+    fields = mechanical_capture_fields(clouds[0], requested_fields)
+    schema = dense_field_schema(fields)
+    output_fields = [
+        ("x", PointField.FLOAT32, 1), ("y", PointField.FLOAT32, 1),
+        ("z", PointField.FLOAT32, 1), ("intensity", PointField.FLOAT32, 1),
+        ("ring", PointField.UINT16, 1), ("scan_id", PointField.UINT32, 1),
+    ] + [
+        (item.name, item.datatype, item.count) for item in fields
+        if item.name not in {*MECHANICAL_REQUIRED_FIELDS, "scan_id"}
+    ]
+    point_count = 0
+    next_scan_id = 0
+    frames = []
+    for index, msg in enumerate(clouds):
+        selected = mechanical_capture_fields(msg, requested_fields)
+        if (dense_field_schema(selected) != schema
+                or msg.header.frame_id != clouds[0].header.frame_id):
+            raise ValueError("Point cloud frame_id or selected field schema changed.")
+        arrays, valid = mechanical_point_arrays(msg, selected)
+        valid_count = int(np.count_nonzero(valid))
+        if "scan_id" in arrays:
+            values, first = np.unique(arrays["scan_id"][valid], return_index=True)
+            original_ids = [int(value) for value in values[np.argsort(first)]]
+        else:
+            original_ids = [None] if valid_count else []
+        if next_scan_id + len(original_ids) > 4294967296:
+            raise ValueError("Generated scan_id exceeds uint32.")
+        mapping = [
+            {"source_scan_id": source, "scan_id": next_scan_id + offset}
+            for offset, source in enumerate(original_ids)
+        ]
+        next_scan_id += len(mapping)
+        frames.append({
+            "message_index": index,
+            "header_seq": int(getattr(msg.header, "seq", 0)),
+            "stamp": stamp_metadata(msg.header.stamp),
+            "raw_point_count": msg.width * msg.height,
+            "saved_point_count": valid_count,
+            "filtered_point_count": msg.width * msg.height - valid_count,
+            "scan_id_mapping": mapping,
+            "source_fields": [
+                {"name": item.name, "datatype": item.datatype,
+                 "count": item.count, "offset": item.offset} for item in msg.fields
+            ],
+        })
+        point_count += valid_count
+    if not point_count:
+        raise ValueError("No valid finite XYZ and intensity points to save.")
+    names = [name for name, _, _ in output_fields]
+    header = [
+        "# .PCD v0.7 - Point Cloud Data file format", "VERSION 0.7",
+        f"FIELDS {' '.join(names)}",
+        "SIZE " + " ".join(str(PCD_DATATYPE_MAP[datatype][0])
+                           for _, datatype, _ in output_fields),
+        "TYPE " + " ".join(PCD_DATATYPE_MAP[datatype][1]
+                           for _, datatype, _ in output_fields),
+        "COUNT " + " ".join(str(count) for _, _, count in output_fields),
+        f"WIDTH {point_count}", "HEIGHT 1", "VIEWPOINT 0 0 0 1 0 0 0",
+        f"POINTS {point_count}", "DATA ascii",
+    ]
+    with Path(output_path).open("w", encoding="ascii") as stream:
+        stream.write("\n".join(header) + "\n")
+        for msg, frame in zip(clouds, frames):
+            count = frame["saved_point_count"]
+            if not count:
+                continue
+            selected = mechanical_capture_fields(msg, requested_fields)
+            arrays, valid = mechanical_point_arrays(msg, selected)
+            mapping = {item["source_scan_id"]: item["scan_id"]
+                       for item in frame["scan_id_mapping"]}
+            if "scan_id" in arrays:
+                scans = np.fromiter(
+                    (mapping[int(value)] for value in arrays["scan_id"][valid]),
+                    dtype=np.uint32, count=count,
+                )
+            else:
+                scans = np.full(count, mapping[None], dtype=np.uint32)
+            columns = []
+            for name, _, field_count in output_fields:
+                values = scans if name == "scan_id" else arrays[name][valid]
+                if name == "ring":
+                    values = values.astype(np.uint16)
+                columns.extend(values.reshape(count, field_count).T)
+            for row in zip(*columns):
+                stream.write(" ".join(format_pcd_value(value.item()) for value in row) + "\n")
+    return point_count, names, {
+        "frames": frames,
+        "output_fields": [
+            {"name": name, "size": PCD_DATATYPE_MAP[datatype][0],
+             "type": PCD_DATATYPE_MAP[datatype][1], "count": count}
+            for name, datatype, count in output_fields
+        ],
+        "scan_count": next_scan_id,
+    }
+
+
 def save_dense_capture_pair(
     snapshot, image_dir, pointcloud_dir, image_ext, capture_index, voxel_size=0.0,
+    metadata_dir=None, metadata_context=None,
 ):
     temporary = []
     published = []
@@ -884,16 +1105,59 @@ def save_dense_capture_pair(
             temporary.append(Path(path))
         if not cv2.imwrite(str(temporary[0]), snapshot.image):
             raise RuntimeError("Failed to write capture image.")
-        point_count, names = save_pointclouds_as_pcd(
-            snapshot.clouds, temporary[1], [item.name for item in snapshot.fields],
-            voxel_size=voxel_size,
-        )
+        metadata = None
+        if snapshot.mechanical_metadata is not None:
+            if voxel_size != 0:
+                raise ValueError("fastcalib2-mechanical requires --voxel-size 0.")
+            if metadata_dir is None:
+                raise ValueError("fastcalib2-mechanical requires a metadata directory.")
+            point_count, names, details = save_mechanical_pointclouds_as_pcd(
+                snapshot.clouds, temporary[1], [item.name for item in snapshot.fields],
+            )
+            metadata = {
+                **(metadata_context or {}), **snapshot.mechanical_metadata, **details,
+                "schema_version": 1, "capture_mode": MECHANICAL_MODE,
+                "session_id": snapshot.session_id, "capture_index": capture_index,
+                "saved_at": datetime.now().astimezone().isoformat(),
+                "image_stamp": stamp_metadata(snapshot.image_stamp),
+                "frame_id": snapshot.frame_id,
+                "accepted_frames": len(snapshot.clouds),
+                "raw_point_count": (
+                    point_count + snapshot.mechanical_metadata["filtered_point_count"]
+                ),
+                "accepted_raw_point_count": snapshot.raw_point_count,
+                "saved_point_count": point_count,
+                "raw_cache_bytes": snapshot.byte_count,
+                "completion_reason": snapshot.reason,
+                "elapsed_seconds": snapshot.finished_at - snapshot.started_at,
+                "voxel_size": 0,
+            }
+            offsets = metadata.pop("receipt_offsets")
+            for frame, receipt in zip(metadata["frames"], offsets):
+                frame["received_after_trigger_seconds"] = receipt
+            fd, path = tempfile.mkstemp(prefix=".capture-", suffix=".json", dir=str(metadata_dir))
+            os.close(fd)
+            temporary.append(Path(path))
+        else:
+            point_count, names = save_pointclouds_as_pcd(
+                snapshot.clouds, temporary[1], [item.name for item in snapshot.fields],
+                voxel_size=voxel_size,
+            )
         for _ in range(10):
             stem = (
                 f"capture_{capture_index:06d}_{datetime.now():%Y%m%d_%H%M%S_%f}"
                 f"_{uuid4().hex[:8]}"
             )
             paths = (image_dir / f"{stem}.{image_ext}", pointcloud_dir / f"{stem}.pcd")
+            if metadata is not None:
+                paths += (metadata_dir / f"{stem}.json",)
+                metadata["files"] = {
+                    "image": paths[0].name, "pointcloud": paths[1].name,
+                    "metadata": paths[2].name,
+                }
+                with temporary[2].open("w", encoding="utf-8") as stream:
+                    json.dump(metadata, stream, indent=2, allow_nan=False)
+                    stream.write("\n")
             try:
                 # Hard links publish complete files without replacing an existing sample.
                 for source, destination in zip(temporary, paths):
@@ -975,6 +1239,8 @@ class CalibrationCaptureNode:
         self._requested_pcd_fields = requested_pcd_fields
         self._max_pointcloud_age = max_pointcloud_age
         validate_voxel_size(voxel_size)
+        if capture_mode == MECHANICAL_MODE and voxel_size != 0:
+            raise ValueError("fastcalib2-mechanical requires --voxel-size 0.")
         self._voxel_size = voxel_size
         self._image_writer = image_writer
         self._image_save_mode = image_save_mode
@@ -992,18 +1258,26 @@ class CalibrationCaptureNode:
         self._dense_thread = None
         self._dense_event = threading.Event()
         self._dense_reported_error = 0
-        if self._capture_mode == "dense":
+        if self._capture_mode in ACCUMULATING_MODES:
             self._dense_session = DenseCaptureSession(
                 requested_fields=requested_pcd_fields, frame_limit=accumulate_frames,
                 duration=accumulate_seconds, timeout=accumulate_timeout,
                 max_bytes=accumulate_max_mb * 1024 * 1024, max_age=max_pointcloud_age,
+                mechanical=self._capture_mode == MECHANICAL_MODE,
             )
 
         self._image_dir = output_dir / "images"
         self._pointcloud_dir = output_dir / "pointclouds"
-        if self._capture_mode in {"paired", "dense"}:
+        self._metadata_dir = output_dir / "metadata"
+        self._metadata_context = {
+            "input_mode": input_mode, "pointcloud_topic": pointcloud_topic,
+            "source_image_topic": source_image_topic,
+        }
+        if self._capture_mode in {"paired", *ACCUMULATING_MODES}:
             self._image_dir.mkdir(parents=True, exist_ok=True)
             self._pointcloud_dir.mkdir(parents=True, exist_ok=True)
+            if self._capture_mode == MECHANICAL_MODE:
+                self._metadata_dir.mkdir(parents=True, exist_ok=True)
         elif self._image_writer is None:
             self._image_writer = ImageFileWriter(
                 save_dir=output_dir,
@@ -1013,7 +1287,7 @@ class CalibrationCaptureNode:
             )
 
         self._pointcloud_sub = None
-        if self._capture_mode in {"paired", "dense"}:
+        if self._capture_mode in {"paired", *ACCUMULATING_MODES}:
             self._pointcloud_sub = rospy.Subscriber(
                 pointcloud_topic, PointCloud2, self._on_pointcloud, queue_size=5
             )
@@ -1084,9 +1358,13 @@ class CalibrationCaptureNode:
         if snapshot is None:
             return
         try:
+            metadata_options = (
+                (self._metadata_dir, self._metadata_context)
+                if self._capture_mode == MECHANICAL_MODE else ()
+            )
             image_path, pointcloud_path, point_count, names = save_dense_capture_pair(
                 snapshot, self._image_dir, self._pointcloud_dir, self._image_ext,
-                capture_index, self._voxel_size,
+                capture_index, self._voxel_size, *metadata_options,
             )
             with self._lock:
                 self._capture_index = capture_index
@@ -1095,16 +1373,23 @@ class CalibrationCaptureNode:
                 if msg.header.stamp.to_sec() != 0
             ]
             rospy.loginfo(
-                "Saved dense capture %06d (session=%d): image=%s, pointcloud=%s, "
+                "Saved %s capture %06d (session=%d): image=%s, pointcloud=%s, "
                 "reason=%s, frames=%d, raw_points=%d, saved_points=%d, voxel_size=%gm, "
                 "elapsed=%.3fs, "
                 "cloud_stamps=%s, image_stamp=%s, frame_id=%s, fields=%s",
-                capture_index, snapshot.session_id, image_path, pointcloud_path,
+                self._capture_mode, capture_index, snapshot.session_id, image_path, pointcloud_path,
                 snapshot.reason, len(snapshot.clouds), snapshot.raw_point_count,
                 point_count, self._voxel_size, snapshot.finished_at - snapshot.started_at,
                 (min(stamps), max(stamps)) if stamps else "unstamped",
                 snapshot.image_stamp, snapshot.frame_id, ",".join(names),
             )
+            if snapshot.mechanical_metadata is not None:
+                rospy.loginfo(
+                    "Mechanical metadata=%s, filtered_points=%d, invalid_clouds=%d",
+                    self._metadata_dir / (pointcloud_path.stem + ".json"),
+                    snapshot.mechanical_metadata["filtered_point_count"],
+                    snapshot.mechanical_metadata["invalid_cloud_count"],
+                )
         except Exception as exc:
             rospy.logerr("Failed to save dense capture %d: %s", snapshot.session_id, exc)
         finally:
@@ -1246,7 +1531,7 @@ class CalibrationCaptureNode:
         self._save_image_frame(frame)
 
     def handle_save_key(self) -> None:
-        if self._capture_mode == "dense":
+        if self._capture_mode in ACCUMULATING_MODES:
             with self._lock:
                 session = self._dense_session
                 if self._closed:
@@ -1376,7 +1661,8 @@ def run_stream_capture(
                     node.handle_save_key()
                 elif key in (quit_key, quit_key.upper(), "\x1b"):
                     break
-                elif key in (cancel_key, cancel_key.upper()) and node._capture_mode == "dense":
+                elif (key in (cancel_key, cancel_key.upper())
+                      and node._capture_mode in ACCUMULATING_MODES):
                     node.handle_cancel_key()
 
                 rate.sleep()
@@ -1390,7 +1676,8 @@ def main() -> None:
     image_ext = normalize_extension(args.image_ext)
     capture_mode = args.resolved_capture_mode
     requested_fields = (
-        sanitize_fields(args.pcd_fields) if capture_mode in {"paired", "dense"} else []
+        sanitize_fields(args.pcd_fields)
+        if capture_mode in {"paired", *ACCUMULATING_MODES} else []
     )
 
     rospy.init_node("calib_snap")
@@ -1439,12 +1726,12 @@ def run_capture_inputs(args, node, image_writer=None):
     rate = rospy.Rate(max(args.fps, 1.0))
     save_key = args.save_key[:1]
     quit_key = args.quit_key[:1]
-    if capture_mode == "dense":
+    if capture_mode in ACCUMULATING_MODES:
         rospy.loginfo(
-            "Dense capture: frames=%s, seconds=%s, silence_timeout=%.3fs, cache=%dMiB, "
+            "%s capture: frames=%s, seconds=%s, silence_timeout=%.3fs, cache=%dMiB, "
             "voxel_size=%gm. "
             "Keep camera, lidar and calibration target still while collecting.",
-            args.accumulate_frames, args.accumulate_seconds,
+            capture_mode, args.accumulate_frames, args.accumulate_seconds,
             args.accumulate_timeout, args.accumulate_max_mb, args.voxel_size,
         )
         rospy.loginfo(
@@ -1540,7 +1827,8 @@ def run_capture_inputs(args, node, image_writer=None):
                 node.handle_save_key()
             elif key in (quit_key, quit_key.upper(), "\x1b"):
                 break
-            elif key in (args.cancel_key[:1], args.cancel_key[:1].upper()) and capture_mode == "dense":
+            elif (key in (args.cancel_key[:1], args.cancel_key[:1].upper())
+                  and capture_mode in ACCUMULATING_MODES):
                 node.handle_cancel_key()
 
             rate.sleep()
