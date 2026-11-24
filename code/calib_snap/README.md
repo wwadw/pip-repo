@@ -33,6 +33,52 @@ source .venv/bin/activate
 uv pip install .
 ```
 
+## 远程采集
+
+`0.1.6+remote.1.wireless` 提供双 ROS Master 远程采集。板卡上的 `calib-snap-remote` 每两秒广播一次身份和采集端口，标定平台发现后通过双向 TLS 连接。`calib-snap` 仍可用于本地快捷键采集。
+
+```bash
+source /opt/ros/noetic/setup.bash
+uv venv --python "$(which python3)" --system-site-packages /opt/calib-snap/.venv
+uv pip install --python /opt/calib-snap/.venv/bin/python \
+  'https://pip.wgists.me/dist/calib-snap/calib_snap-0.1.6+remote.1.wireless-py3-none-any.whl'
+```
+
+将节点配置保存为 `/etc/calib-snap/node.json`。`id` 需与节点证书的 DNS SAN 一致。节点证书需允许 `serverAuth`，平台证书需允许 `clientAuth`。`discovery_key` 指向和平台共享的随机广播密钥文件，至少 32 字节。下例中的文件路径相对于节点配置文件。
+
+```json
+{
+  "id": "erc2500",
+  "name": "ERC2500",
+  "discovery_key": "discovery.key",
+  "ca": "ca.pem",
+  "certificate": "node.pem",
+  "private_key": "node.key",
+  "source_defaults": {
+    "image_source": "ros",
+    "image_master": "127.0.0.1",
+    "pointcloud_master": "192.168.124.162"
+  }
+}
+```
+
+加载 ROS 1 环境并设置默认 `ROS_MASTER_URI`，再启动节点。将命令纳入容器启动流程或进程管理器，掉线后节点仍会定期广播。
+
+```bash
+exec /opt/calib-snap/.venv/bin/calib-snap-remote \
+  --network-config /etc/calib-snap/node.json \
+  --spool "$HOME/.local/state/calib-snap" \
+  --idle-timeout 60
+```
+
+节点默认向 `255.255.255.255:45817` 广播，在 `0.0.0.0:45818` 接收平台连接。机器人有多块网卡时，可以用 `broadcast` 指定 Wi-Fi 子网的广播地址。让平台和节点位于同一广播域，并同步系统时钟。平台需启用采集节点发现，并配置同一广播密钥、受信任的 CA 和自己的客户端证书。打开采集页后，正常广播的节点会自动出现在设备列表中。
+
+图像和点云可各自指定 Master IPv4 地址及端口，默认端口为 `11311`。地址留空时使用 `ROS_MASTER_URI`。采集节点可以解析并访问发布者通告的地址时，填写 Master 和话题即可。如果发布者通告了无法解析的主机名或不可达地址，再设置 `image_publisher_ip` 或 `pointcloud_publisher_ip`，覆盖对应发布节点的地址。
+
+部署前确认上层板卡能订阅下层的 `sensor_msgs/PointCloud2`。RTSP 模式需要支持打开和读取超时的 OpenCV FFmpeg 后端。
+
+会话内可以更换 RTSP 地址、Master 和话题。等待所选输入收到新帧后再采集。采集文件在 `--spool` 下按采集 ID 保存，服务器接收完整的一组后才清理机器人副本。采集时保持机器人和标定板静止，RTSP 图像元数据记录板卡的接收时间。
+
 ## 纯图片采集
 
 不指定 `--pointcloud-topic` 时，默认进入纯图片采集模式。

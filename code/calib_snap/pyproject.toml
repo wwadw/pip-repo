@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "calib-snap"
-version = "0.1.6"
+version = "0.1.6+remote.1.wireless"
 description = "Capture paired RTSP/camera images and lidar point clouds for calibration"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.8"
@@ -15,9 +15,10 @@ dependencies = [
 
 [project.scripts]
 calib-snap = "calib_snap:main"
+calib-snap-remote = "calib_snap_remote:main"
 
 [tool.setuptools]
-py-modules = ["calib_snap"]
+py-modules = ["calib_snap", "calib_snap_remote", "calib_snap_ros", "calib_snap_network"]
 
 [tool.uv]
 package = true

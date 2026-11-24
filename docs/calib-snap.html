@@ -193,6 +193,35 @@ source /opt/ros/noetic/setup.bash
 uv venv --python &quot;$(which python3)&quot; --system-site-packages
 source .venv/bin/activate
 uv pip install .</code></pre>
+      <h2>远程采集</h2>
+      <p><code>0.1.6+remote.1.wireless</code> 提供双 ROS Master 远程采集。板卡上的 <code>calib-snap-remote</code> 每两秒广播一次身份和采集端口，标定平台发现后通过双向 TLS 连接。<code>calib-snap</code> 仍可用于本地快捷键采集。</p>
+      <pre><code class="language-bash">source /opt/ros/noetic/setup.bash
+uv venv --python &quot;$(which python3)&quot; --system-site-packages /opt/calib-snap/.venv
+uv pip install --python /opt/calib-snap/.venv/bin/python \
+  &#x27;https://pip.wgists.me/dist/calib-snap/calib_snap-0.1.6+remote.1.wireless-py3-none-any.whl&#x27;</code></pre>
+      <p>将节点配置保存为 <code>/etc/calib-snap/node.json</code>。<code>id</code> 需与节点证书的 DNS SAN 一致。节点证书需允许 <code>serverAuth</code>，平台证书需允许 <code>clientAuth</code>。<code>discovery_key</code> 指向和平台共享的随机广播密钥文件，至少 32 字节。下例中的文件路径相对于节点配置文件。</p>
+      <pre><code class="language-json">{
+  &quot;id&quot;: &quot;erc2500&quot;,
+  &quot;name&quot;: &quot;ERC2500&quot;,
+  &quot;discovery_key&quot;: &quot;discovery.key&quot;,
+  &quot;ca&quot;: &quot;ca.pem&quot;,
+  &quot;certificate&quot;: &quot;node.pem&quot;,
+  &quot;private_key&quot;: &quot;node.key&quot;,
+  &quot;source_defaults&quot;: {
+    &quot;image_source&quot;: &quot;ros&quot;,
+    &quot;image_master&quot;: &quot;127.0.0.1&quot;,
+    &quot;pointcloud_master&quot;: &quot;192.168.124.162&quot;
+  }
+}</code></pre>
+      <p>加载 ROS 1 环境并设置默认 <code>ROS_MASTER_URI</code>，再启动节点。将命令纳入容器启动流程或进程管理器，掉线后节点仍会定期广播。</p>
+      <pre><code class="language-bash">exec /opt/calib-snap/.venv/bin/calib-snap-remote \
+  --network-config /etc/calib-snap/node.json \
+  --spool &quot;$HOME/.local/state/calib-snap&quot; \
+  --idle-timeout 60</code></pre>
+      <p>节点默认向 <code>255.255.255.255:45817</code> 广播，在 <code>0.0.0.0:45818</code> 接收平台连接。机器人有多块网卡时，可以用 <code>broadcast</code> 指定 Wi-Fi 子网的广播地址。让平台和节点位于同一广播域，并同步系统时钟。平台需启用采集节点发现，并配置同一广播密钥、受信任的 CA 和自己的客户端证书。打开采集页后，正常广播的节点会自动出现在设备列表中。</p>
+      <p>图像和点云可各自指定 Master IPv4 地址及端口，默认端口为 <code>11311</code>。地址留空时使用 <code>ROS_MASTER_URI</code>。采集节点可以解析并访问发布者通告的地址时，填写 Master 和话题即可。如果发布者通告了无法解析的主机名或不可达地址，再设置 <code>image_publisher_ip</code> 或 <code>pointcloud_publisher_ip</code>，覆盖对应发布节点的地址。</p>
+      <p>部署前确认上层板卡能订阅下层的 <code>sensor_msgs/PointCloud2</code>。RTSP 模式需要支持打开和读取超时的 OpenCV FFmpeg 后端。</p>
+      <p>会话内可以更换 RTSP 地址、Master 和话题。等待所选输入收到新帧后再采集。采集文件在 <code>--spool</code> 下按采集 ID 保存，服务器接收完整的一组后才清理机器人副本。采集时保持机器人和标定板静止，RTSP 图像元数据记录板卡的接收时间。</p>
       <h2>纯图片采集</h2>
       <p>不指定 <code>--pointcloud-topic</code> 时，默认进入纯图片采集模式。</p>
       <p>ROS 图像话题自动隔帧保存：</p>
