@@ -35,43 +35,35 @@ uv pip install .
 
 ## 远程采集
 
-`0.1.6+remote.1.wireless` 提供双 ROS Master 远程采集。板卡上的 `calib-snap-remote` 每两秒广播一次身份和采集端口，标定平台发现后通过双向 TLS 连接。`calib-snap` 仍可用于本地快捷键采集。
+`0.1.6+remote.1.wireless.lan` 提供免配对的双 ROS Master 远程采集。节点启动即用主机名广播，首次启动自动生成设备 ID，后续从采集目录恢复。新版标定平台会自动发现节点并直接连接。`calib-snap` 仍可用于本地快捷键采集。
+
+### Linux 系统服务
+
+在已安装 ROS 1 的 systemd 主机上运行同一份安装脚本。脚本安装 wheel、启动节点，并启用开机自启动。Python 环境使用 `uv` 或 `venv` 与 `pip`。
 
 ```bash
-source /opt/ros/noetic/setup.bash
-uv venv --python "$(which python3)" --system-site-packages /opt/calib-snap/.venv
-uv pip install --python /opt/calib-snap/.venv/bin/python \
-  'https://pip.wgists.me/dist/calib-snap/calib_snap-0.1.6+remote.1.wireless-py3-none-any.whl'
+curl -fsSLO https://pip.wgists.me/dist/calib-snap/install-remote.sh
+sudo bash install-remote.sh
 ```
 
-将节点配置保存为 `/etc/calib-snap/node.json`。`id` 需与节点证书的 DNS SAN 一致。节点证书需允许 `serverAuth`，平台证书需允许 `clientAuth`。`discovery_key` 指向和平台共享的随机广播密钥文件，至少 32 字节。下例中的文件路径相对于节点配置文件。
+可在 `/etc/default/calib-snap-remote` 设置非默认的 `ROS_MASTER_URI` 或 `CALIB_SNAP_ROS_SETUP`。服务将设备 ID 和待传文件保存在 `/var/lib/calib-snap`。
 
-```json
-{
-  "id": "erc2500",
-  "name": "ERC2500",
-  "discovery_key": "discovery.key",
-  "ca": "ca.pem",
-  "certificate": "node.pem",
-  "private_key": "node.key",
-  "source_defaults": {
-    "image_source": "ros",
-    "image_master": "127.0.0.1",
-    "pointcloud_master": "192.168.124.162"
-  }
-}
+### ROS 容器
+
+在机器人共用的 ROS 1 镜像构建中加入安装脚本和以下配置。采集容器启动即运行节点。
+
+```dockerfile
+COPY install-remote.sh /tmp/install-remote.sh
+RUN bash /tmp/install-remote.sh --install-only
+ENTRYPOINT ["/opt/calib-snap/run-remote"]
+CMD ["--spool", "/var/lib/calib-snap"]
 ```
 
-加载 ROS 1 环境并设置默认 `ROS_MASTER_URI`，再启动节点。将命令纳入容器启动流程或进程管理器，掉线后节点仍会定期广播。
+启动采集容器时使用主机网络、主机名和重启策略，例如 `--network host --uts host --restart unless-stopped`，并挂载 `/var/lib/calib-snap` 以保留设备 ID 和待传文件。现有 ROS 容器也可用进程管理器运行 `/opt/calib-snap/run-remote`。
 
-```bash
-exec /opt/calib-snap/.venv/bin/calib-snap-remote \
-  --network-config /etc/calib-snap/node.json \
-  --spool "$HOME/.local/state/calib-snap" \
-  --idle-timeout 60
-```
+### 局域网与数据源
 
-节点默认向 `255.255.255.255:45817` 广播，在 `0.0.0.0:45818` 接收平台连接。机器人有多块网卡时，可以用 `broadcast` 指定 Wi-Fi 子网的广播地址。让平台和节点位于同一广播域，并同步系统时钟。平台需启用采集节点发现，并配置同一广播密钥、受信任的 CA 和自己的客户端证书。打开采集页后，正常广播的节点会自动出现在设备列表中。
+节点默认在启用的 IPv4 广播接口上向 UDP `45817` 发送发现报文，通过 TCP `45818` 接收采集连接。把平台和节点接入同一可信采集局域网。采集通道使用明文 TCP，由局域网控制访问。如需只在指定网段广播，可在可选的 `/etc/calib-snap/node.json` 中设置 `broadcast`。
 
 图像和点云可各自指定 Master IPv4 地址及端口，默认端口为 `11311`。地址留空时使用 `ROS_MASTER_URI`。采集节点可以解析并访问发布者通告的地址时，填写 Master 和话题即可。如果发布者通告了无法解析的主机名或不可达地址，再设置 `image_publisher_ip` 或 `pointcloud_publisher_ip`，覆盖对应发布节点的地址。
 

@@ -468,9 +468,9 @@ class RemoteCapture:
             shutil.rmtree(retired)
         return {}
 
-    def serve(self, reader, writer, idle_timeout):
+    def serve(self, reader, writer, idle_timeout, robot_id=None):
         commands = {
-            "hello": lambda _: dict(version=PROTOCOL_VERSION, dual_master=True),
+            "hello": lambda _: dict(version=PROTOCOL_VERSION, dual_master=True, id=robot_id),
             "topics": self.topics, "configure": self.configure, "status": self.status,
             "preview": self.preview, "capture": self.capture, "cancel": self.cancel,
             "pending": self.pending, "fetch": self.fetch, "ack": self.ack,
@@ -513,9 +513,11 @@ class RemoteCapture:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--spool", default="~/.local/state/calib-snap")
+    parser.add_argument("--spool", default=os.environ.get("CALIB_SNAP_SPOOL", "~/.local/state/calib-snap"))
     parser.add_argument("--idle-timeout", type=float, default=60)
-    parser.add_argument("--network-config", help="Broadcast discovery and serve TLS requests using this JSON configuration.")
+    transport = parser.add_mutually_exclusive_group()
+    transport.add_argument("--network-config", help="Override LAN discovery and data source settings from a JSON file.")
+    transport.add_argument("--stdio", action="store_true", help="Serve requests over standard input and output.")
     args = parser.parse_args()
     if not 10 <= args.idle_timeout <= 600:
         parser.error("--idle-timeout must be between 10 and 600 seconds.")
@@ -530,15 +532,15 @@ def main():
         for folder in spool.iterdir():
             if folder.is_dir() and CAPTURE_ID.fullmatch(folder.name[1:]) and folder.name.startswith("."):
                 shutil.rmtree(folder)
-        if args.network_config:
-            def serve(reader, writer):
+        if not args.stdio:
+            def serve(reader, writer, robot_id):
                 remote = RemoteCapture(spool)
                 try:
-                    remote.serve(reader, writer, None)
+                    remote.serve(reader, writer, None, robot_id)
                 finally:
                     remote.close()
 
-            serve_network(args.network_config, serve, args.idle_timeout, rospy.is_shutdown)
+            serve_network(args.network_config, spool, serve, args.idle_timeout, rospy.is_shutdown)
             return 0
         with os.fdopen(os.dup(sys.stdout.fileno()), "wb") as output:
             sys.stdout.flush()

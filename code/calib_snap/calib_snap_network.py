@@ -1,45 +1,72 @@
-"""Advertise a capture node and accept mutually authenticated TLS sessions."""
+"""Advertise a capture node and accept sessions on the local network."""
 
-import hmac
+import fcntl
+from ipaddress import IPv4Address
 import json
 from pathlib import Path
 import re
 import socket
-import ssl
+import struct
 import sys
 import threading
-import time
+from uuid import uuid4
 
 
 DISCOVERY_PORT = 45817
 CAPTURE_PORT = 45818
 BROADCAST_INTERVAL = 2
 MAX_ANNOUNCEMENT = 4096
+SIOCGIFFLAGS = 0x8913
+SIOCGIFBRDADDR = 0x8919
+IFF_UP_AND_BROADCAST = 0x3
 SOURCE_DEFAULT_FIELDS = {
     "image_source", "image_topic", "pointcloud_topic", "image_master", "pointcloud_master",
     "image_publisher_ip", "pointcloud_publisher_ip",
 }
 
 
-def announce(sender, target, identity, secret, stopped):
-    while not stopped.is_set():
-        body = json.dumps(dict(identity, sent=int(time.time())), ensure_ascii=False).encode()
-        packet = hmac.digest(secret, body, "sha256").hex().encode() + b"\n" + body
+def interface_broadcasts(sender):
+    addresses = set()
+    for _, name in socket.if_nameindex():
+        request = struct.pack("256s", name.encode())
         try:
-            sender.sendto(packet, target)
-        except OSError as error:
-            print(f"calib-snap-remote: discovery broadcast failed: {error}", file=sys.stderr)
+            flags, = struct.unpack_from("H", fcntl.ioctl(sender, SIOCGIFFLAGS, request), 16)
+            if flags & IFF_UP_AND_BROADCAST != IFF_UP_AND_BROADCAST:
+                continue
+            address = socket.inet_ntoa(fcntl.ioctl(sender, SIOCGIFBRDADDR, request)[20:24])
+            if address != "0.0.0.0":
+                addresses.add(address)
+        except OSError:
+            continue
+    return addresses or {"255.255.255.255"}
+
+
+def announce(sender, target, port, packet, stopped):
+    while not stopped.is_set():
+        addresses = (target,) if target else interface_broadcasts(sender)
+        for address in addresses:
+            try:
+                sender.sendto(packet, (address, port))
+            except OSError as error:
+                print(f"calib-snap-remote: discovery broadcast to {address} failed: {error}", file=sys.stderr)
         stopped.wait(BROADCAST_INTERVAL)
 
 
-def serve_network(path, serve, idle_timeout, is_shutdown):
-    path = Path(path).expanduser().resolve()
-    settings = json.loads(path.read_text(encoding="utf-8"))
-    secret = (path.parent / settings["discovery_key"]).read_bytes().strip()
-    if len(secret) < 32:
-        raise ValueError("The discovery key must contain at least 32 bytes.")
-    robot_id, name = settings["id"], settings["name"]
-    defaults = settings.get("source_defaults", {})
+def persistent_id(spool):
+    identity = spool / "node-id"
+    if not identity.exists():
+        temporary = spool / "node-id.tmp"
+        temporary.write_text(uuid4().hex + "\n", encoding="ascii")
+        temporary.replace(identity)
+    return identity.read_text(encoding="ascii").strip()
+
+
+def serve_network(path, spool, serve, idle_timeout, is_shutdown):
+    settings_path = Path(path).expanduser() if path else Path("/etc/calib-snap/node.json")
+    settings = json.loads(settings_path.read_text(encoding="utf-8")) if path or settings_path.is_file() else {}
+    robot_id = settings.get("id") or persistent_id(spool)
+    name = settings.get("name", socket.gethostname()[:96])
+    defaults = settings.get("source_defaults", {"image_source": "ros"})
     if not isinstance(robot_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,48}", robot_id):
         raise ValueError("The node ID must contain 1–48 letters, digits, underscores or hyphens.")
     if not isinstance(name, str) or not name.strip() or len(name) > 96:
@@ -49,12 +76,8 @@ def serve_network(path, serve, idle_timeout, is_shutdown):
     ):
         raise ValueError("Invalid capture source defaults.")
 
-    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    tls.minimum_version = ssl.TLSVersion.TLSv1_2
-    tls.load_cert_chain(path.parent / settings["certificate"], path.parent / settings["private_key"])
-    tls.load_verify_locations(cafile=str(path.parent / settings["ca"]))
-    tls.verify_mode = ssl.CERT_REQUIRED
-    target = (settings.get("broadcast", "255.255.255.255"), settings.get("discovery_port", DISCOVERY_PORT))
+    target = settings.get("broadcast")
+    discovery_port = settings.get("discovery_port", DISCOVERY_PORT)
 
     with socket.socket() as listener, socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -62,26 +85,28 @@ def serve_network(path, serve, idle_timeout, is_shutdown):
         listener.listen()
         listener.settimeout(1)
         sender.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        identity = dict(discovery="calib-snap-v1", id=robot_id, name=name,
+        identity = dict(discovery="calib-snap-lan-v1", id=robot_id, name=name,
                         port=listener.getsockname()[1], source_defaults=defaults)
-        if len(json.dumps(dict(identity, sent=int(time.time())), ensure_ascii=False).encode()) + 65 > MAX_ANNOUNCEMENT:
+        packet = json.dumps(identity, ensure_ascii=False).encode()
+        if len(packet) > MAX_ANNOUNCEMENT:
             raise ValueError("The node announcement exceeds 4096 bytes.")
         stopped = threading.Event()
-        broadcaster = threading.Thread(target=announce, args=(sender, target, identity, secret, stopped), daemon=True)
+        broadcaster = threading.Thread(target=announce, args=(sender, target, discovery_port, packet, stopped),
+                                       daemon=True)
         broadcaster.start()
         try:
             while not is_shutdown():
                 try:
-                    connection, _ = listener.accept()
+                    connection, (host, _) = listener.accept()
                 except socket.timeout:
                     continue
                 with connection:
+                    if not IPv4Address(host).is_private:
+                        continue
                     try:
-                        connection.settimeout(5)
-                        with tls.wrap_socket(connection, server_side=True) as channel:
-                            channel.settimeout(idle_timeout)
-                            with channel.makefile("rb") as reader, channel.makefile("wb") as writer:
-                                serve(reader, writer)
+                        connection.settimeout(idle_timeout)
+                        with connection.makefile("rb") as reader, connection.makefile("wb") as writer:
+                            serve(reader, writer, robot_id)
                     except OSError:
                         continue
         finally:
