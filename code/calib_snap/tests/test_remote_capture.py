@@ -70,6 +70,15 @@ class RemoteCaptureTests(DenseTestCase):
         with self.assertRaisesRegex(ValueError, "current image and point cloud"):
             self.remote.capture(dict(capture, revision=second["revision"]))
 
+    def test_release_closes_configured_sources(self):
+        self.configure("/lidar/front")
+        sources = self.remote.sources
+        self.assertIsNotNone(sources)
+        self.assertEqual(self.remote.release({}), {"released": True})
+        self.assertIsNone(self.remote.sources)
+        sources.cloud_sub.unregister.assert_called_once()
+        sources.image_sub.unregister.assert_called_once()
+
     def test_mechanical_format_checks_current_raw_cloud_only_when_requested(self):
         self.configure("/lidar/front")
         request = {"mode": self.module.MECHANICAL_MODE}

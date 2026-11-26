@@ -172,9 +172,18 @@ class Sources:
     def read_rtsp(self):
         cap = None
         try:
-            cap = cv2.VideoCapture(self.image, cv2.CAP_FFMPEG, [
-                cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 8000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 2000,
-            ])
+            capture_options = []
+            for name, value in (
+                ("CAP_PROP_OPEN_TIMEOUT_MSEC", 8000),
+                ("CAP_PROP_READ_TIMEOUT_MSEC", 2000),
+            ):
+                property_id = getattr(cv2, name, None)
+                if property_id is not None:
+                    capture_options.extend((property_id, value))
+            if capture_options:
+                cap = cv2.VideoCapture(self.image, cv2.CAP_FFMPEG, capture_options)
+            else:
+                cap = cv2.VideoCapture(self.image, cv2.CAP_FFMPEG)
             if not cap.isOpened():
                 raise RuntimeError()
             while not self.stop.is_set() and not rospy.is_shutdown():
@@ -440,6 +449,14 @@ class RemoteCapture:
     def cancel(self, _request):
         return dict(cancelled=bool(self.sources and self.sources.cancel()))
 
+    def release(self, _request):
+        if self.busy():
+            raise ValueError("A capture is in progress.")
+        if self.sources is not None:
+            self.sources.close()
+            self.sources = None
+        return dict(released=True)
+
     def sample_path(self, capture_id):
         if not isinstance(capture_id, str) or not CAPTURE_ID.fullmatch(capture_id):
             raise ValueError("Invalid capture ID.")
@@ -471,7 +488,8 @@ class RemoteCapture:
     def serve(self, reader, writer, idle_timeout, robot_id=None):
         commands = {
             "hello": lambda _: dict(version=PROTOCOL_VERSION, dual_master=True, id=robot_id),
-            "topics": self.topics, "configure": self.configure, "status": self.status,
+            "topics": self.topics, "configure": self.configure, "release": self.release,
+            "status": self.status,
             "preview": self.preview, "capture": self.capture, "cancel": self.cancel,
             "pending": self.pending, "fetch": self.fetch, "ack": self.ack,
         }
